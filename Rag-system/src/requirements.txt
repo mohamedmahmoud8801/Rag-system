@@ -10,3 +10,5 @@ pymupdf==1.28.0
 motor==3.7.1
 openai==2.53.0
 cohere==7.0.8
+qdrant-client==1.10.1
+sentence-transformers==5.7.0
