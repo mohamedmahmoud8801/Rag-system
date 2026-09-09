@@ -10,8 +10,14 @@ class Settings(BaseSettings):
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
 
-    MONGODB_URL: str
-    MONGODB_DATABASE: str
+    # MONGODB_URL: str
+    # MONGODB_DATABASE: str
+
+    POSTGRES_USERNAME: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int
+    POSTGRES_MAIN_DATABASE: str 
 
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str
@@ -19,6 +25,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = None
     OPENAI_API_URL: str = None
     COHERE_API_KEY: str = None
+    HUGGINGFACE_API_KEY: str = None
+    HUGGINGFACE_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    HUGGINGFACE_EMBEDDING_SIZE: int = 384
 
     GENERATION_MODEL_ID: str = None
     EMBEDDING_MODEL_ID: str = None
