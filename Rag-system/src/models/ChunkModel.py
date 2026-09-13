@@ -4,7 +4,7 @@ from .enums.DataBaseEnum import DataBaseEnum
 from bson.objectid import ObjectId
 from pymongo import InsertOne
 from sqlalchemy.future import select
-from sqlalchemy import delete
+from sqlalchemy import delete,func
 
 class ChunkModel(BaseDataModel):
 
@@ -125,6 +125,14 @@ class ChunkModel(BaseDataModel):
         #     DataChunk(**record)
         #     for record in records
         # ]
-    
 
 
+    async def get_total_chunk_count(self, project_id:ObjectId,):
+        
+        async with self.db_client() as session:
+            total_count = 0
+            async with session.begin():
+                count_sql = select (func.count(DataChunk.chunk_id)).where(DataChunk.chunk_project_id == project_id)
+                records_count = await session.execute(count_sql)
+                total_count = records_count.scalar()
+            return total_count
