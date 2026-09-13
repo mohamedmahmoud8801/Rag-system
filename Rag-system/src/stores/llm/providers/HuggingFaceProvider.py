@@ -3,7 +3,7 @@ from ..LLMEnums import HuggingFaceEnums, DocumentTypeEnum
 from sentence_transformers import SentenceTransformer
 import logging
 import numpy as np
-
+from typing import List, Union    
 
 class HuggingFaceProvider(LLMInterface):
 
@@ -55,36 +55,40 @@ class HuggingFaceProvider(LLMInterface):
         self.logger.error("HuggingFace provider does not support text generation")
         return None
 
-    def embed_text(self, text: str, document_type: str = None):
+    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
+
         if not self.client:
             self.logger.error("HuggingFace client was not set")
             return None
+
+        if isinstance(text, str):
+            text = [text]
 
         if not self.embedding_model_id:
             self.logger.error("Embedding model for HuggingFace was not set")
             return None
 
         try:
-            # Process the text
-            processed_text = self.process_text(text)
+            processed_text = [
+                self.process_text(t)
+                for t in text
+            ]
 
-            # Generate embedding
-            embedding = self.client.encode(processed_text)
+            embeddings = self.client.encode(
+                processed_text,
+                convert_to_numpy=True
+            )
 
-            # Ensure we return a list of floats
-            if isinstance(embedding, np.ndarray):
-                return embedding.tolist()
-            else:
-                return list(embedding)
+            return embeddings.tolist()
 
         except Exception as e:
-            self.logger.error(f"Error while embedding text with HuggingFace: {e}")
+            self.logger.error(
+                f"Error while embedding text with HuggingFace: {e}"
+            )
             return None
 
     def construct_prompt(self, prompt: str, role: str):
-        # For embedding models, we don't construct prompts in the same way
-        # but we keep the method for interface consistency
-        return {
-            "role": role,
-            "content": prompt
-        }
+            return {
+                "role": role,
+                "text": prompt,
+            }
