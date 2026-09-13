@@ -21,6 +21,10 @@ class VectorDBInterface(ABC):
     def list_all_collections(self) -> list:
         pass
 
+    @abstractmethod
+    def get_collection_info(self, collection_name: str) -> dict:
+        pass
+
 
     @abstractmethod
     def delete_collection(self, collection_name:str) :
