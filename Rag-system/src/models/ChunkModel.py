@@ -1,10 +1,11 @@
 from .BaseDataModel import BaseDataModel
-from .db_schemes import DataChunk
+from .db_schemes import DataChunk,Asset
 from .enums.DataBaseEnum import DataBaseEnum
 from bson.objectid import ObjectId
 from pymongo import InsertOne
 from sqlalchemy.future import select
 from sqlalchemy import delete,func
+from sqlalchemy.orm import selectinload
 
 class ChunkModel(BaseDataModel):
 
@@ -42,11 +43,19 @@ class ChunkModel(BaseDataModel):
         # chunk._id = result.inserted_id
         # return chunk
 
-    async def get_chunk(self, chunk_id: str):
+    async def get_chunk(self, chunk_id: int):
         async with self.db_client() as session:
             async with session.begin():
-                await session.execute(select(DataChunk).where(DataChunk.chunk_id == chunk_id))
+                stmt = (
+                    select(DataChunk)
+                    .options(selectinload(DataChunk.asset))
+                    .where(DataChunk.chunk_id == chunk_id)
+                )
 
+                result = await session.execute(stmt)
+                record = result.scalar_one_or_none()
+
+                return record
 
         
         # result = await self.collection.find_one({

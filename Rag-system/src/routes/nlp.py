@@ -7,6 +7,7 @@ from controllers import NLPController
 from models import ResponseSignal
 from tqdm.auto import tqdm
 import logging
+import time
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -42,6 +43,7 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        reranker_client=request.app.reranker_client,
         template_parser=request.app.template_parser,
     )
 
@@ -112,6 +114,7 @@ async def get_project_index_info(request: Request, project_id: int):
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        reranker_client=request.app.reranker_client,
         template_parser=request.app.template_parser,
     )
 
@@ -139,6 +142,7 @@ async def search_index(request: Request, project_id: int, search_request: Search
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        reranker_client=request.app.reranker_client,
         template_parser=request.app.template_parser,
     )
 
@@ -168,15 +172,22 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         db_client=request.app.db_client
     )
 
+    chunk_model = await ChunkModel.create_instance(
+            db_client=request.app.db_client
+    )
+
     project = await project_model.get_project_or_create_one(
         project_id=project_id
     )
 
     nlp_controller = NLPController(
+        
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        reranker_client=request.app.reranker_client,
         template_parser=request.app.template_parser,
+
     )
 
     answer, full_prompt, chat_history = await nlp_controller.answer_rag_question(
@@ -201,3 +212,99 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
             "chat_history": chat_history
         }
     )
+
+@nlp_router.post("/index/multimodal-answer/{project_id}")
+async def answer_multimodal_rag(
+    request: Request,
+    project_id: int,
+    search_request: SearchRequest
+):
+    total_start = time.perf_counter()
+
+    project_model = await ProjectModel.create_instance(
+        db_client=request.app.db_client
+    )
+
+    project = await project_model.get_project_or_create_one(
+        project_id=project_id
+    )
+
+    nlp_controller = NLPController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        reranker_client=request.app.reranker_client,
+        template_parser=request.app.template_parser,
+    )
+
+    # -------------------------
+    # Retrieval + image loading
+    # -------------------------
+    start = time.perf_counter()
+
+    documents = await nlp_controller.prepare_multimodal_documents(
+        project=project,
+        query=search_request.text,
+        limit=search_request.limit,
+        db_client=request.app.db_client
+    )
+
+    print(
+        f"[TIME] prepare_multimodal_documents: "
+        f"{time.perf_counter() - start:.2f}s"
+    )
+
+    # -------------------------
+    # VLM
+    # -------------------------
+    start = time.perf_counter()
+
+    analyzed_documents = await nlp_controller.analyze_multimodal_documents(
+        documents=documents,
+        query=search_request.text
+    )
+
+    print(
+        f"[TIME] analyze_multimodal_documents: "
+        f"{time.perf_counter() - start:.2f}s"
+    )
+
+    # -------------------------
+    # Final LLM
+    # -------------------------
+    start = time.perf_counter()
+
+    answer = await nlp_controller.generate_multimodal_answer(
+        documents=analyzed_documents,
+        query=search_request.text
+    )
+
+    print(
+        f"[TIME] generate_multimodal_answer: "
+        f"{time.perf_counter() - start:.2f}s"
+    )
+
+    # -------------------------
+    # Cleanup
+    # -------------------------
+    for document in analyzed_documents:
+        document.pop("image", None)
+
+    print(
+        f"[TIME] TOTAL: "
+        f"{time.perf_counter() - total_start:.2f}s"
+    )
+
+    if not answer:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "signal": ResponseSignal.RAG_ANSWER_ERROR.value
+            }
+        )
+
+    return {
+        "query": search_request.text,
+        "answer": answer,
+        "documents": analyzed_documents
+    }

@@ -5,6 +5,7 @@ from helpers.config import get_settings
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.templates.template_parser import TemplateParser
+from stores.reranker.RerankerProviderFactory import RerankerProviderFactory
 from sqlalchemy.ext.asyncio import create_async_engine,AsyncSession
 from sqlalchemy.orm import sessionmaker
 
@@ -29,7 +30,11 @@ async def startup_span():
 
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
     await app.vectordb_client.connect()
-
+    # Reranker
+    app.reranker_client = RerankerProviderFactory.create(
+        provider=settings.RERANKER_PROVIDER,
+        model_id=settings.RERANKER_MODEL_ID
+    )
 
     app.template_parser = TemplateParser(language=settings.PRIMARY_LANG,default_language=settings.DEFAULT_LANG)
 

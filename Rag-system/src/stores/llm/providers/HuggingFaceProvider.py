@@ -69,8 +69,11 @@ class HuggingFaceProvider(LLMInterface):
             return None
 
         try:
+            # E5 models require an explicit "query: " / "passage: " prefix
+            prefix = "query: " if document_type == DocumentTypeEnum.QUERY.value else "passage: "
+
             processed_text = [
-                self.process_text(t)
+                prefix + self.process_text(t)
                 for t in text
             ]
 

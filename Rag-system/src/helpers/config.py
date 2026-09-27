@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import  List
+from pathlib import Path
 class Settings(BaseSettings):
 
     APP_NAME: str
@@ -46,8 +47,32 @@ class Settings(BaseSettings):
     PRIMARY_LANG: str = "en"
     DEFAULT_LANG: str = "en"
 
-    class Config:
-        env_file = ".env"
+#=======================vlm=======================
+    VLM_BACKEND: str = None
+    OLLAMA_API_KEY: str = None
+    OLLAMA_API_URL: str = None
+    VLM_MODEL_ID: str = None
+    VLM_DEFAULT_MAX_OUTPUT_TOKENS: int = 20000
+    VLM_DEFAULT_TEMPERATURE:float =0.1
+    OLLAMA_NUM_CTX: int
+
+# ======================= OCR =======================
+
+    OCR_BACKEND: str = "paddleocr"
+    OCR_LANGS:List[str] = ["ar","en"]
+
+# =======================Reranker======================
+
+    RERANKER_PROVIDER:str = "huggingface"
+    RERANKER_MODEL_ID:str = "BAAI/bge-reranker-v2-m3"
+
+    model_config = SettingsConfigDict(
+    env_file=Path(__file__).resolve().parent.parent / ".env",
+    env_file_encoding="utf-8",
+    extra="ignore"
+)
+    # class Config:
+    #     env_file = ".env"
 
 def get_settings():
     return Settings()

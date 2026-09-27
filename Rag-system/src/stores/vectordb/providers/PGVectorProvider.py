@@ -269,28 +269,45 @@ class PGVectorProvider(VectorDBInterface):
     
     async def search_by_vector(self, collection_name: str, vector: list, limit: int):
 
-        is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
+        is_collection_existed = await self.is_collection_existed(
+            collection_name=collection_name
+        )
+
         if not is_collection_existed:
-            self.logger.error(f"Can not search for records in a non-existed collection: {collection_name}")
+            self.logger.error(
+                f"Can not search for records in a non-existed collection: {collection_name}"
+            )
             return False
-        
-        vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
+
+        vector = "[" + ",".join([str(v) for v in vector]) + "]"
+
         async with self.db_client() as session:
             async with session.begin():
-                search_sql = sql_text(f'SELECT {PgVectorTableSchemeEnums.TEXT.value} as text, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
-                                      f' FROM {collection_name}'
-                                      ' ORDER BY score DESC '
-                                      f'LIMIT {limit}'
-                                      )
-                
-                result = await session.execute(search_sql, {"vector": vector})
+
+                search_sql = sql_text(
+                    f'SELECT '
+                    f'{PgVectorTableSchemeEnums.TEXT.value} as text, '
+                    f'{PgVectorTableSchemeEnums.CHUNK_ID.value} as chunk_id, '
+                    f'{PgVectorTableSchemeEnums.METADATA.value} as metadata, '
+                    f'1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score '
+                    f'FROM {collection_name} '
+                    f'ORDER BY score DESC '
+                    f'LIMIT {limit}'
+                )
+
+                result = await session.execute(
+                    search_sql,
+                    {"vector": vector}
+                )
 
                 records = result.fetchall()
 
                 return [
                     RetrievedDocument(
                         text=record.text,
-                        score=record.score
+                        score=record.score,
+                        chunk_id=record.chunk_id,
+                        metadata=record.metadata,
                     )
                     for record in records
                 ]
