@@ -1,3 +1,5 @@
+from helpers.config import get_settings
+
 from .BaseController import BaseController
 from models.db_schemes import Project, DataChunk
 from stores.llm.LLMEnums import DocumentTypeEnum,OpenAIEnums, CoHereEnums
@@ -89,9 +91,30 @@ class NLPController(BaseController):
         # step2: manage items
         texts = [ c.chunk_text for c in chunks ]
         metadata = [ c.chunk_metadata for c in  chunks]
+        # ===================== DEBUG =====================
+
+        print("\n========== INDEX DEBUG ==========")
+        print("chunks:", len(chunks))
+        print("chunk_ids:", chunks_ids)
+        print("texts type:", type(texts))
+        print("texts count:", len(texts))
+
+        for i, text in enumerate(texts[:3]):
+            print(f"text[{i}] type:", type(text))
+            print(f"text[{i}] value:", repr(text[:200] if text else text))
+
+        print("=================================\n")
+
         vectors = self.embedding_client.embed_text(text=texts, 
                         document_type=DocumentTypeEnum.DOCUMENT.value)
 
+        print("\n========== VIDEO/DOCUMENT EMBEDDING DEBUG ==========")
+        print("texts type:", type(texts))
+        print("texts len:", len(texts) if texts is not None else None)
+        print("first text:", texts[0][:300] if texts else None)
+        print("vectors type:", type(vectors))
+        print("vectors len:", len(vectors) if vectors is not None else None)
+        print("====================================================\n")
 
         # step3: create collection if not exists
         _ = await self.vectordb_client.create_collection(
@@ -115,7 +138,8 @@ class NLPController(BaseController):
         self,
         project: Project,
         text: str,
-        limit: int = 10
+        limit: int = 10,
+        file_id: str = None
 ):
 
         # Step 1: get collection name
@@ -143,7 +167,8 @@ class NLPController(BaseController):
         results = await self.vectordb_client.search_by_vector(
             collection_name=collection_name,
             vector=query_vector,
-            limit=limit
+            limit=limit,
+            file_id=file_id
         )
 
         if not results:
@@ -164,18 +189,21 @@ class NLPController(BaseController):
         # ==============================
         # Step 4: RERANK
         # ==============================
-        reranked_results = self.reranker_client.rerank(
-            query=text,
-            documents=results,
-            top_k=5
-        )
+        settings = get_settings()
+
+        if settings.RERANK_ENABLED:
+            reranked_results = self.reranker_client.rerank(
+                query=text,
+                documents=results,
+                top_k=settings.FINAL_CONTEXTS
+            )
+        else:
+            reranked_results = results[:settings.FINAL_CONTEXTS]
 
         # ==============================
         # DEBUG: AFTER RERANK
         # ==============================
-        print("\n========== AFTER RERANK ==========")
-
-        print("\n========== BEFORE RERANK ==========")
+        
 
         print("\n========== AFTER RERANK ==========")
 
@@ -234,7 +262,8 @@ class NLPController(BaseController):
         retrieved_documents = await self.search_vector_db_collection(
             project=project,
             text=query,
-            limit=limit
+            limit=limit,
+            file_id=file_id
         )
        
         enriched_documents = await self.enrich_retrieved_documents(
@@ -959,41 +988,56 @@ class NLPController(BaseController):
             )
 
             return None
-    async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
-        
+    async def answer_rag_question(
+        self,
+        project: Project,
+        query: str,
+        limit: int = 10,
+        return_contexts: bool = False,
+        file_id: str = None,
+    ):
         answer, full_prompt, chat_history = None, None, None
 
         # step1: retrieve related documents
-        retrieved_documents =await self.search_vector_db_collection(
+        retrieved_documents = await self.search_vector_db_collection(
             project=project,
             text=query,
             limit=limit,
+            file_id=file_id
         )
 
         if not retrieved_documents or len(retrieved_documents) == 0:
+            if return_contexts:
+                return answer, full_prompt, chat_history, []
             return answer, full_prompt, chat_history
 
+        
 
-        # Rerank retrieved documents
-        retrieved_documents = self.reranker_client.rerank(
-            query=query,
-            documents=retrieved_documents,
-            top_k=3,
-        )
         # step2: Construct LLM prompt
-        system_prompt = self.template_parser.get("rag", "system_prompt")
+        system_prompt = self.template_parser.get(
+            "rag",
+            "system_prompt"
+        )
 
         documents_prompts = "\n".join([
-            self.template_parser.get("rag", "document_prompt", {
+            self.template_parser.get(
+                "rag",
+                "document_prompt",
+                {
                     "doc_num": idx + 1,
                     "chunk_text": self.generation_client.process_text(doc.text),
-            })
+                }
+            )
             for idx, doc in enumerate(retrieved_documents)
         ])
 
-        footer_prompt = self.template_parser.get("rag", "footer_prompt",{
-            "query": query
-        })
+        footer_prompt = self.template_parser.get(
+            "rag",
+            "footer_prompt",
+            {
+                "query": query
+            }
+        )
 
         # step3: Construct Generation Client Prompts
         chat_history = [
@@ -1003,12 +1047,24 @@ class NLPController(BaseController):
             )
         ]
 
-        full_prompt = "\n\n".join([ documents_prompts,  footer_prompt])
+        full_prompt = "\n\n".join([
+            documents_prompts,
+            footer_prompt
+        ])
 
         # step4: Retrieve the Answer
         answer = self.generation_client.generate_text(
             prompt=full_prompt,
             chat_history=chat_history
         )
+
+        if return_contexts:
+            contexts = [
+                doc.text
+                for doc in retrieved_documents
+                if getattr(doc, "text", None)
+            ]
+
+            return answer, full_prompt, chat_history, contexts
 
         return answer, full_prompt, chat_history

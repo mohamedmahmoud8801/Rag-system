@@ -1,0 +1,422 @@
+[
+  {
+    "id": "Q01",
+    "category": "Factual",
+    "question": "Who are the authors of the paper \"Attention Is All You Need\"?",
+    "ground_truth": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin.",
+    "reference": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin.",
+    "source_section": "Title page",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q02",
+    "category": "Factual",
+    "question": "Which two machine translation tasks were used to evaluate the Transformer?",
+    "ground_truth": "The WMT 2014 English-to-German and the WMT 2014 English-to-French translation tasks.",
+    "reference": "The WMT 2014 English-to-German and the WMT 2014 English-to-French translation tasks.",
+    "source_section": "Abstract; 6.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q03",
+    "category": "Factual",
+    "question": "What training data and vocabulary were used for the WMT 2014 English-German task?",
+    "ground_truth": "The standard WMT 2014 English-German dataset of about 4.5 million sentence pairs, encoded with byte-pair encoding using a shared source-target vocabulary of about 37,000 tokens.",
+    "reference": "The standard WMT 2014 English-German dataset of about 4.5 million sentence pairs, encoded with byte-pair encoding using a shared source-target vocabulary of about 37,000 tokens.",
+    "source_section": "5.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q04",
+    "category": "Factual",
+    "question": "What hardware was used to train the Transformer models?",
+    "ground_truth": "One machine with 8 NVIDIA P100 GPUs.",
+    "reference": "One machine with 8 NVIDIA P100 GPUs.",
+    "source_section": "5.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q05",
+    "category": "Factual",
+    "question": "Which optimizer was used to train the models, and with what hyperparameters?",
+    "ground_truth": "The Adam optimizer with beta1 = 0.9, beta2 = 0.98 and epsilon = 10^-9.",
+    "reference": "The Adam optimizer with beta1 = 0.9, beta2 = 0.98 and epsilon = 10^-9.",
+    "source_section": "5.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q06",
+    "category": "Factual",
+    "question": "On which dataset was English constituency parsing evaluated, and how many training sentences did the WSJ-only setting use?",
+    "ground_truth": "The Wall Street Journal (WSJ) portion of the Penn Treebank, with about 40K training sentences in the WSJ-only setting; results are reported on Section 23 of WSJ.",
+    "reference": "The Wall Street Journal (WSJ) portion of the Penn Treebank, with about 40K training sentences in the WSJ-only setting; results are reported on Section 23 of WSJ.",
+    "source_section": "6.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q07",
+    "category": "Definition",
+    "question": "What is the Transformer, according to the paper?",
+    "ground_truth": "A model architecture that eschews recurrence and convolutions and relies entirely on an attention mechanism to draw global dependencies between input and output. It keeps the encoder-decoder structure, using stacked self-attention and point-wise, fully connected layers, and the authors describe it as the first transduction model relying entirely on self-attention.",
+    "reference": "A model architecture that eschews recurrence and convolutions and relies entirely on an attention mechanism to draw global dependencies between input and output. It keeps the encoder-decoder structure, using stacked self-attention and point-wise, fully connected layers, and the authors describe it as the first transduction model relying entirely on self-attention.",
+    "source_section": "Abstract; 1; 2; 3",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q08",
+    "category": "Definition",
+    "question": "What is self-attention (intra-attention)?",
+    "ground_truth": "An attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence.",
+    "reference": "An attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence.",
+    "source_section": "2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q09",
+    "category": "Definition",
+    "question": "How does the paper define an attention function?",
+    "ground_truth": "Mapping a query and a set of key-value pairs to an output, where the query, keys, values and output are all vectors. The output is a weighted sum of the values, where the weight of each value is computed by a compatibility function of the query with the corresponding key.",
+    "reference": "Mapping a query and a set of key-value pairs to an output, where the query, keys, values and output are all vectors. The output is a weighted sum of the values, where the weight of each value is computed by a compatibility function of the query with the corresponding key.",
+    "source_section": "3.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q10",
+    "category": "Definition",
+    "question": "What is Scaled Dot-Product Attention?",
+    "ground_truth": "The paper's attention function: compute the dot products of the query with all keys, divide each by sqrt(d_k), and apply a softmax to obtain the weights on the values. In matrix form: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V.",
+    "reference": "The paper's attention function: compute the dot products of the query with all keys, divide each by sqrt(d_k), and apply a softmax to obtain the weights on the values. In matrix form: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V.",
+    "source_section": "3.2.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q11",
+    "category": "Definition",
+    "question": "What is Multi-Head Attention?",
+    "ground_truth": "Instead of a single attention function with d_model-dimensional keys, values and queries, the queries, keys and values are linearly projected h times with different learned projections to d_k, d_k and d_v dimensions. Attention is applied in parallel on each projection, and the outputs are concatenated and projected again. It lets the model jointly attend to information from different representation subspaces at different positions.",
+    "reference": "Instead of a single attention function with d_model-dimensional keys, values and queries, the queries, keys and values are linearly projected h times with different learned projections to d_k, d_k and d_v dimensions. Attention is applied in parallel on each projection, and the outputs are concatenated and projected again. It lets the model jointly attend to information from different representation subspaces at different positions.",
+    "source_section": "3.2.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q12",
+    "category": "Definition",
+    "question": "What are positional encodings and why does the Transformer need them?",
+    "ground_truth": "Because the model has no recurrence and no convolution, information about the relative or absolute position of tokens must be injected. Positional encodings of dimension d_model are added to the input embeddings at the bottoms of the encoder and decoder stacks (so the two can be summed), and the paper uses sine and cosine functions of different frequencies.",
+    "reference": "Because the model has no recurrence and no convolution, information about the relative or absolute position of tokens must be injected. Positional encodings of dimension d_model are added to the input embeddings at the bottoms of the encoder and decoder stacks (so the two can be summed), and the paper uses sine and cosine functions of different frequencies.",
+    "source_section": "3.5",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q13",
+    "category": "Comparison",
+    "question": "How does additive attention differ from dot-product attention, and which one does the Transformer use?",
+    "ground_truth": "Dot-product attention is identical to the paper's algorithm except for the scaling factor 1/sqrt(d_k). Additive attention computes compatibility with a feed-forward network with a single hidden layer. They have similar theoretical complexity, but dot-product attention is much faster and more space-efficient in practice because it uses highly optimized matrix multiplication. The Transformer uses scaled dot-product attention.",
+    "reference": "Dot-product attention is identical to the paper's algorithm except for the scaling factor 1/sqrt(d_k). Additive attention computes compatibility with a feed-forward network with a single hidden layer. They have similar theoretical complexity, but dot-product attention is much faster and more space-efficient in practice because it uses highly optimized matrix multiplication. The Transformer uses scaled dot-product attention.",
+    "source_section": "3.2.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q14",
+    "category": "Comparison",
+    "question": "How do sinusoidal positional encodings compare with learned positional embeddings?",
+    "ground_truth": "They produced nearly identical results (Table 3 row E: dev BLEU 25.7 with learned embeddings vs 25.8 for the base model with sinusoids). The authors chose the sinusoidal version because it may allow the model to extrapolate to sequence lengths longer than those seen during training.",
+    "reference": "They produced nearly identical results (Table 3 row E: dev BLEU 25.7 with learned embeddings vs 25.8 for the base model with sinusoids). The authors chose the sinusoidal version because it may allow the model to extrapolate to sequence lengths longer than those seen during training.",
+    "source_section": "3.5; 6.2 (Table 3, row E)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q15",
+    "category": "Comparison",
+    "question": "How do self-attention and recurrent layers compare in complexity per layer, sequential operations and maximum path length?",
+    "ground_truth": "Per Table 1: self-attention has O(n^2 * d) complexity per layer, O(1) sequential operations and O(1) maximum path length. Recurrent layers have O(n * d^2) complexity, O(n) sequential operations and O(n) maximum path length. Self-attention is faster than recurrent layers when the sequence length n is smaller than the representation dimension d.",
+    "reference": "Per Table 1: self-attention has O(n^2 * d) complexity per layer, O(1) sequential operations and O(1) maximum path length. Recurrent layers have O(n * d^2) complexity, O(n) sequential operations and O(n) maximum path length. Self-attention is faster than recurrent layers when the sequence length n is smaller than the representation dimension d.",
+    "source_section": "4 (Table 1)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q16",
+    "category": "Comparison",
+    "question": "How do self-attention and convolutional layers compare in connecting distant positions?",
+    "ground_truth": "A single convolutional layer with kernel width k < n does not connect all pairs of positions; it needs a stack of O(n/k) layers (contiguous kernels) or O(log_k(n)) layers (dilated convolutions), which lengthens the paths between positions. Self-attention connects all positions with a constant number of operations (O(1) path length). Convolutional layers are also generally more expensive than recurrent layers by a factor of k.",
+    "reference": "A single convolutional layer with kernel width k < n does not connect all pairs of positions; it needs a stack of O(n/k) layers (contiguous kernels) or O(log_k(n)) layers (dilated convolutions), which lengthens the paths between positions. Self-attention connects all positions with a constant number of operations (O(1) path length). Convolutional layers are also generally more expensive than recurrent layers by a factor of k.",
+    "source_section": "2; 4 (Table 1)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q17",
+    "category": "Comparison",
+    "question": "How do the Transformer base and big models differ in configuration, size and BLEU?",
+    "ground_truth": "Base: N = 6, d_model = 512, d_ff = 2048, h = 8, P_drop = 0.1, about 65M parameters, trained 100K steps (about 12 hours); BLEU 27.3 (EN-DE) and 38.1 (EN-FR). Big: N = 6, d_model = 1024, d_ff = 4096, h = 16, P_drop = 0.3 for EN-DE (0.1 for EN-FR), about 213M parameters, trained 300K steps (3.5 days); BLEU 28.4 (EN-DE) and 41.8 (EN-FR, Table 2).",
+    "reference": "Base: N = 6, d_model = 512, d_ff = 2048, h = 8, P_drop = 0.1, about 65M parameters, trained 100K steps (about 12 hours); BLEU 27.3 (EN-DE) and 38.1 (EN-FR). Big: N = 6, d_model = 1024, d_ff = 4096, h = 16, P_drop = 0.3 for EN-DE (0.1 for EN-FR), about 213M parameters, trained 300K steps (3.5 days); BLEU 28.4 (EN-DE) and 41.8 (EN-FR, Table 2).",
+    "source_section": "3.1; 5.2; 6.1 (Table 2); 6.2 (Table 3)",
+    "needs_multiple_chunks": true,
+    "note": "The text of 6.1 says 41.0 for EN-FR while the abstract and Table 2 say 41.8."
+  },
+  {
+    "id": "Q18",
+    "category": "Comparison",
+    "question": "How does a decoder layer differ from an encoder layer?",
+    "ground_truth": "Each encoder layer has two sub-layers: multi-head self-attention and a position-wise feed-forward network. A decoder layer has those two plus a third sub-layer that performs multi-head attention over the output of the encoder stack. The decoder's self-attention is also masked to prevent positions from attending to subsequent positions.",
+    "reference": "Each encoder layer has two sub-layers: multi-head self-attention and a position-wise feed-forward network. A decoder layer has those two plus a third sub-layer that performs multi-head attention over the output of the encoder stack. The decoder's self-attention is also masked to prevent positions from attending to subsequent positions.",
+    "source_section": "3.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q19",
+    "category": "Multi-hop",
+    "question": "Why is the decoder self-attention masked, and how is the masking implemented?",
+    "ground_truth": "Masking prevents positions from attending to subsequent positions, so that (together with output embeddings offset by one position) the prediction for position i depends only on known outputs at positions less than i, preserving the auto-regressive property. It is implemented inside scaled dot-product attention by setting to -infinity all softmax inputs that correspond to illegal (leftward) connections.",
+    "reference": "Masking prevents positions from attending to subsequent positions, so that (together with output embeddings offset by one position) the prediction for position i depends only on known outputs at positions less than i, preserving the auto-regressive property. It is implemented inside scaled dot-product attention by setting to -infinity all softmax inputs that correspond to illegal (leftward) connections.",
+    "source_section": "3.1; 3.2.3",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q20",
+    "category": "Multi-hop",
+    "question": "In the three uses of multi-head attention in the Transformer, where do the queries, keys and values come from?",
+    "ground_truth": "Encoder-decoder attention: queries come from the previous decoder layer, keys and values from the encoder output, so every decoder position can attend over all input positions. Encoder self-attention: queries, keys and values all come from the output of the previous encoder layer. Decoder self-attention: queries, keys and values come from the previous decoder layer, with each position attending only to positions up to and including itself (masked).",
+    "reference": "Encoder-decoder attention: queries come from the previous decoder layer, keys and values from the encoder output, so every decoder position can attend over all input positions. Encoder self-attention: queries, keys and values all come from the output of the previous encoder layer. Decoder self-attention: queries, keys and values come from the previous decoder layer, with each position attending only to positions up to and including itself (masked).",
+    "source_section": "3.2.3; 3.1",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q21",
+    "category": "Multi-hop",
+    "question": "What three desiderata motivate the use of self-attention, and how does self-attention fare on each?",
+    "ground_truth": "(1) Total computational complexity per layer: self-attention is O(n^2 * d), faster than recurrent layers when n < d. (2) Amount of parallelizable computation, measured by the minimum number of sequential operations: O(1) for self-attention vs O(n) for recurrent layers. (3) Path length between long-range dependencies: O(1) for self-attention, which makes long-range dependencies easier to learn than in recurrent (O(n)) or convolutional (O(log_k n) or O(n/k)) layers.",
+    "reference": "(1) Total computational complexity per layer: self-attention is O(n^2 * d), faster than recurrent layers when n < d. (2) Amount of parallelizable computation, measured by the minimum number of sequential operations: O(1) for self-attention vs O(n) for recurrent layers. (3) Path length between long-range dependencies: O(1) for self-attention, which makes long-range dependencies easier to learn than in recurrent (O(n)) or convolutional (O(log_k n) or O(n/k)) layers.",
+    "source_section": "4 (Table 1)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q22",
+    "category": "Multi-hop",
+    "question": "How did the English-to-French training setup differ from English-to-German, and what BLEU did the big model reach?",
+    "ground_truth": "English-to-French used the much larger WMT 2014 English-French dataset of 36M sentences with a 32,000 word-piece vocabulary (vs about 4.5M pairs and a 37,000-token BPE vocabulary for EN-DE). The big model used dropout P_drop = 0.1 instead of 0.3. It reached 41.8 BLEU (abstract and Table 2), a new single-model state of the art, at less than 1/4 the training cost of the previous best.",
+    "reference": "English-to-French used the much larger WMT 2014 English-French dataset of 36M sentences with a 32,000 word-piece vocabulary (vs about 4.5M pairs and a 37,000-token BPE vocabulary for EN-DE). The big model used dropout P_drop = 0.1 instead of 0.3. It reached 41.8 BLEU (abstract and Table 2), a new single-model state of the art, at less than 1/4 the training cost of the previous best.",
+    "source_section": "5.1; 6.1 (Table 2)",
+    "needs_multiple_chunks": true,
+    "note": "The text of 6.1 says 41.0 while the abstract and Table 2 say 41.8; accept either only if the answer cites its source."
+  },
+  {
+    "id": "Q23",
+    "category": "Multi-hop",
+    "question": "What does the ablation say about the number of attention heads, and how is computation kept constant across those variants?",
+    "ground_truth": "In Table 3 rows (A), the number of heads and the key/value dimensions are varied while keeping computation constant (d_k = d_v = d_model / h). Single-head attention is 0.9 BLEU worse than the best setting (24.9 vs 25.8 on the dev set), and quality also drops with too many heads (e.g., 32 heads gives 25.4 BLEU).",
+    "reference": "In Table 3 rows (A), the number of heads and the key/value dimensions are varied while keeping computation constant (d_k = d_v = d_model / h). Single-head attention is 0.9 BLEU worse than the best setting (24.9 vs 25.8 on the dev set), and quality also drops with too many heads (e.g., 32 heads gives 25.4 BLEU).",
+    "source_section": "3.2.2; 6.2 (Table 3, rows A)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q24",
+    "category": "Multi-hop",
+    "question": "How well does the Transformer generalize to English constituency parsing, and how does it compare to previous parsers?",
+    "ground_truth": "A 4-layer Transformer (d_model = 1024) with little task-specific tuning reached 91.3 F1 on WSJ Section 23 when trained on WSJ only (about 40K sentences), outperforming the BerkeleyParser (90.4), and 92.7 F1 in the semi-supervised setting (about 17M sentences). It beat all previously reported models except the Recurrent Neural Network Grammar (Dyer et al., 2016).",
+    "reference": "A 4-layer Transformer (d_model = 1024) with little task-specific tuning reached 91.3 F1 on WSJ Section 23 when trained on WSJ only (about 40K sentences), outperforming the BerkeleyParser (90.4), and 92.7 F1 in the semi-supervised setting (about 17M sentences). It beat all previously reported models except the Recurrent Neural Network Grammar (Dyer et al., 2016).",
+    "source_section": "6.3 (Table 4)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q25",
+    "category": "Numerical / architecture",
+    "question": "How many layers do the encoder and decoder stacks have, and what is the model dimension?",
+    "ground_truth": "Both the encoder and the decoder are stacks of N = 6 identical layers, and all sub-layers and embedding layers produce outputs of dimension d_model = 512.",
+    "reference": "Both the encoder and the decoder are stacks of N = 6 identical layers, and all sub-layers and embedding layers produce outputs of dimension d_model = 512.",
+    "source_section": "3.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q26",
+    "category": "Numerical / architecture",
+    "question": "What are the input/output and inner dimensions of the position-wise feed-forward network?",
+    "ground_truth": "The input and output dimensionality is d_model = 512 and the inner layer has dimensionality d_ff = 2048. It consists of two linear transformations with a ReLU activation in between: FFN(x) = max(0, xW1 + b1)W2 + b2.",
+    "reference": "The input and output dimensionality is d_model = 512 and the inner layer has dimensionality d_ff = 2048. It consists of two linear transformations with a ReLU activation in between: FFN(x) = max(0, xW1 + b1)W2 + b2.",
+    "source_section": "3.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q27",
+    "category": "Numerical / architecture",
+    "question": "How many attention heads does the base model use, and what are d_k and d_v?",
+    "ground_truth": "h = 8 parallel attention heads, with d_k = d_v = d_model / h = 64 for each head.",
+    "reference": "h = 8 parallel attention heads, with d_k = d_v = d_model / h = 64 for each head.",
+    "source_section": "3.2.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q28",
+    "category": "Numerical / architecture",
+    "question": "What learning rate schedule was used, and how many warmup steps?",
+    "ground_truth": "lrate = d_model^-0.5 * min(step_num^-0.5, step_num * warmup_steps^-1.5), i.e., the learning rate increases linearly for the first warmup_steps steps and then decreases proportionally to the inverse square root of the step number, with warmup_steps = 4000.",
+    "reference": "lrate = d_model^-0.5 * min(step_num^-0.5, step_num * warmup_steps^-1.5), i.e., the learning rate increases linearly for the first warmup_steps steps and then decreases proportionally to the inverse square root of the step number, with warmup_steps = 4000.",
+    "source_section": "5.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q29",
+    "category": "Numerical / architecture",
+    "question": "How many training steps and how much time did the base and big models need?",
+    "ground_truth": "Base models: 100,000 steps, about 12 hours, roughly 0.4 seconds per step. Big models: 300,000 steps, about 3.5 days, 1.0 second per step. All on one machine with 8 NVIDIA P100 GPUs.",
+    "reference": "Base models: 100,000 steps, about 12 hours, roughly 0.4 seconds per step. Big models: 300,000 steps, about 3.5 days, 1.0 second per step. All on one machine with 8 NVIDIA P100 GPUs.",
+    "source_section": "5.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q30",
+    "category": "Numerical / architecture",
+    "question": "What beam search settings and checkpoint averaging were used at inference for translation?",
+    "ground_truth": "Beam search with beam size 4 and length penalty alpha = 0.6, with maximum output length set to input length + 50 (terminating early when possible). Base models averaged the last 5 checkpoints (written at 10-minute intervals); big models averaged the last 20 checkpoints.",
+    "reference": "Beam search with beam size 4 and length penalty alpha = 0.6, with maximum output length set to input length + 50 (terminating early when possible). Base models averaged the last 5 checkpoints (written at 10-minute intervals); big models averaged the last 20 checkpoints.",
+    "source_section": "6.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q31",
+    "category": "Why / reasoning",
+    "question": "Why does the Transformer scale the dot products by 1/sqrt(d_k)?",
+    "ground_truth": "For large d_k the dot products grow large in magnitude (if the components of q and k are independent with mean 0 and variance 1, their dot product has mean 0 and variance d_k), pushing the softmax into regions with extremely small gradients. Scaling by 1/sqrt(d_k) counteracts this; without scaling, additive attention outperforms dot-product attention for larger d_k.",
+    "reference": "For large d_k the dot products grow large in magnitude (if the components of q and k are independent with mean 0 and variance 1, their dot product has mean 0 and variance d_k), pushing the softmax into regions with extremely small gradients. Scaling by 1/sqrt(d_k) counteracts this; without scaling, additive attention outperforms dot-product attention for larger d_k.",
+    "source_section": "3.2.1 (incl. footnote)",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q32",
+    "category": "Why / reasoning",
+    "question": "Why does the Transformer use multi-head attention instead of a single attention head?",
+    "ground_truth": "With a single head, averaging inhibits the ability to jointly attend to information from different representation subspaces at different positions. Multi-head attention also counteracts the reduced effective resolution caused by averaging attention-weighted positions. Because each head has a reduced dimension (d_k = d_v = 64 for h = 8), the total computational cost is similar to single-head attention with full dimensionality.",
+    "reference": "With a single head, averaging inhibits the ability to jointly attend to information from different representation subspaces at different positions. Multi-head attention also counteracts the reduced effective resolution caused by averaging attention-weighted positions. Because each head has a reduced dimension (d_k = d_v = 64 for h = 8), the total computational cost is similar to single-head attention with full dimensionality.",
+    "source_section": "2; 3.2.2",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q33",
+    "category": "Why / reasoning",
+    "question": "Why did the authors choose sinusoidal positional encodings?",
+    "ground_truth": "They hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset k, PE(pos+k) can be represented as a linear function of PE(pos). They also thought it might let the model extrapolate to sequence lengths longer than those seen in training. Learned positional embeddings gave nearly identical results.",
+    "reference": "They hypothesized it would allow the model to easily learn to attend by relative positions, since for any fixed offset k, PE(pos+k) can be represented as a linear function of PE(pos). They also thought it might let the model extrapolate to sequence lengths longer than those seen in training. Learned positional embeddings gave nearly identical results.",
+    "source_section": "3.5; 6.2",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q34",
+    "category": "Why / reasoning",
+    "question": "Why do the authors prefer self-attention over recurrent layers?",
+    "ground_truth": "Recurrent models compute hidden states sequentially, which precludes parallelization within training examples and becomes critical for longer sequences. Self-attention connects all positions with a constant number of sequential operations and a constant maximum path length (making long-range dependencies easier to learn), is faster than recurrent layers when n < d, and may also yield more interpretable models.",
+    "reference": "Recurrent models compute hidden states sequentially, which precludes parallelization within training examples and becomes critical for longer sequences. Self-attention connects all positions with a constant number of sequential operations and a constant maximum path length (making long-range dependencies easier to learn), is faster than recurrent layers when n < d, and may also yield more interpretable models.",
+    "source_section": "1; 4",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q35",
+    "category": "Why / reasoning",
+    "question": "Why do all sub-layers and embedding layers in the model produce outputs of dimension d_model = 512?",
+    "ground_truth": "To facilitate the residual connections around each sub-layer, whose output is LayerNorm(x + Sublayer(x)); the sub-layer output must have the same dimension as its input so the two can be added.",
+    "reference": "To facilitate the residual connections around each sub-layer, whose output is LayerNorm(x + Sublayer(x)); the sub-layer output must have the same dimension as its input so the two can be added.",
+    "source_section": "3.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q36",
+    "category": "Why / reasoning",
+    "question": "Why does label smoothing hurt perplexity but still help translation quality?",
+    "ground_truth": "Label smoothing (epsilon_ls = 0.1) makes the model learn to be more unsure, which hurts perplexity, but it improves accuracy and BLEU score.",
+    "reference": "Label smoothing (epsilon_ls = 0.1) makes the model learn to be more unsure, which hurts perplexity, but it improves accuracy and BLEU score.",
+    "source_section": "5.4",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q37",
+    "category": "Component-specific",
+    "question": "How does the position-wise feed-forward network work and how are its parameters shared?",
+    "ground_truth": "It is applied to each position separately and identically: FFN(x) = max(0, xW1 + b1)W2 + b2, two linear transformations with a ReLU in between. The linear transformations are the same across positions but use different parameters from layer to layer. It can also be described as two convolutions with kernel size 1.",
+    "reference": "It is applied to each position separately and identically: FFN(x) = max(0, xW1 + b1)W2 + b2, two linear transformations with a ReLU in between. The linear transformations are the same across positions but use different parameters from layer to layer. It can also be described as two convolutions with kernel size 1.",
+    "source_section": "3.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q38",
+    "category": "Component-specific",
+    "question": "How are residual connections and layer normalization applied around each sub-layer, and where is dropout applied?",
+    "ground_truth": "Each sub-layer is wrapped as LayerNorm(x + Sublayer(x)), with a residual connection around each sub-layer followed by layer normalization. Residual dropout is applied to the output of each sub-layer before it is added to the input and normalized, and also to the sums of the embeddings and positional encodings in both stacks (P_drop = 0.1 for the base model).",
+    "reference": "Each sub-layer is wrapped as LayerNorm(x + Sublayer(x)), with a residual connection around each sub-layer followed by layer normalization. Residual dropout is applied to the output of each sub-layer before it is added to the input and normalized, and also to the sums of the embeddings and positional encodings in both stacks (P_drop = 0.1 for the base model).",
+    "source_section": "3.1; 5.4",
+    "needs_multiple_chunks": true,
+    "note": ""
+  },
+  {
+    "id": "Q39",
+    "category": "Component-specific",
+    "question": "How are the embedding layers and the pre-softmax linear transformation set up?",
+    "ground_truth": "Learned embeddings convert input and output tokens to vectors of dimension d_model, and the usual learned linear transformation plus softmax convert the decoder output into next-token probabilities. The same weight matrix is shared between the two embedding layers and the pre-softmax linear transformation, and in the embedding layers those weights are multiplied by sqrt(d_model).",
+    "reference": "Learned embeddings convert input and output tokens to vectors of dimension d_model, and the usual learned linear transformation plus softmax convert the decoder output into next-token probabilities. The same weight matrix is shared between the two embedding layers and the pre-softmax linear transformation, and in the embedding layers those weights are multiplied by sqrt(d_model).",
+    "source_section": "3.4",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q40",
+    "category": "Component-specific",
+    "question": "What is the role of the encoder-decoder attention layer?",
+    "ground_truth": "The queries come from the previous decoder layer, while the memory keys and values come from the output of the encoder. This lets every position in the decoder attend over all positions in the input sequence, mimicking typical encoder-decoder attention in sequence-to-sequence models.",
+    "reference": "The queries come from the previous decoder layer, while the memory keys and values come from the output of the encoder. This lets every position in the decoder attend over all positions in the input sequence, mimicking typical encoder-decoder attention in sequence-to-sequence models.",
+    "source_section": "3.2.3",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q41",
+    "category": "Component-specific",
+    "question": "What are the formulas for the sinusoidal positional encoding and the range of its wavelengths?",
+    "ground_truth": "PE(pos, 2i) = sin(pos / 10000^(2i/d_model)) and PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model)), where pos is the position and i is the dimension. Each dimension corresponds to a sinusoid, and the wavelengths form a geometric progression from 2*pi to 10000 * 2*pi.",
+    "reference": "PE(pos, 2i) = sin(pos / 10000^(2i/d_model)) and PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model)), where pos is the position and i is the dimension. Each dimension corresponds to a sinusoid, and the wavelengths form a geometric progression from 2*pi to 10000 * 2*pi.",
+    "source_section": "3.5",
+    "needs_multiple_chunks": false,
+    "note": ""
+  },
+  {
+    "id": "Q42",
+    "category": "Component-specific",
+    "question": "How was the English-to-French data tokenized and batched?",
+    "ground_truth": "The WMT 2014 English-French dataset (36M sentences) was split into a 32,000 word-piece vocabulary. Sentence pairs were batched together by approximate sequence length, with each training batch containing about 25,000 source tokens and 25,000 target tokens.",
+    "reference": "The WMT 2014 English-French dataset (36M sentences) was split into a 32,000 word-piece vocabulary. Sentence pairs were batched together by approximate sequence length, with each training batch containing about 25,000 source tokens and 25,000 target tokens.",
+    "source_section": "5.1",
+    "needs_multiple_chunks": false,
+    "note": ""
+  }
+]

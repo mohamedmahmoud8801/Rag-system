@@ -6,6 +6,7 @@ from typing import List
 from models.db_schemes import RetrievedDocument
 from sqlalchemy.sql import text as sql_text
 import json
+import traceback
 
 class PGVectorProvider(VectorDBInterface):
 
@@ -267,7 +268,14 @@ class PGVectorProvider(VectorDBInterface):
 
         return True
     
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int):
+    async def search_by_vector(
+    self,
+    collection_name: str,
+    vector: list,
+    limit: int,
+    file_id: str = None
+):
+        print("DEBUG file_id:", repr(file_id))
 
         is_collection_existed = await self.is_collection_existed(
             collection_name=collection_name
@@ -284,23 +292,101 @@ class PGVectorProvider(VectorDBInterface):
         async with self.db_client() as session:
             async with session.begin():
 
-                search_sql = sql_text(
-                    f'SELECT '
-                    f'{PgVectorTableSchemeEnums.TEXT.value} as text, '
-                    f'{PgVectorTableSchemeEnums.CHUNK_ID.value} as chunk_id, '
-                    f'{PgVectorTableSchemeEnums.METADATA.value} as metadata, '
-                    f'1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score '
-                    f'FROM {collection_name} '
-                    f'ORDER BY score DESC '
-                    f'LIMIT {limit}'
-                )
+                if file_id:
+                    search_sql = sql_text(
+                        f"""
+                        SELECT
+                            {PgVectorTableSchemeEnums.TEXT.value} AS text,
+                            {PgVectorTableSchemeEnums.CHUNK_ID.value} AS chunk_id,
+                            {PgVectorTableSchemeEnums.METADATA.value} AS metadata,
+                            1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) AS score
+                        FROM {collection_name}
+                        WHERE metadata->>'source' = :file_id
+                        ORDER BY score DESC
+                        LIMIT {limit}
+                        """
+                    )
 
-                result = await session.execute(
-                    search_sql,
-                    {"vector": vector}
-                )
+                    try:
+                        print("DEBUG 1: before execute")
 
-                records = result.fetchall()
+                        result = await session.execute(
+                            search_sql,
+                            {
+                                "vector": str(vector),
+                                "file_id": file_id,
+                            },
+                        )
+
+                        print("DEBUG 2: execute succeeded")
+
+                        debug_result = await session.execute(
+                            sql_text(
+                                f"""
+                                SELECT
+                                    metadata->>'source' AS source,
+                                    COUNT(*) AS count
+                                FROM {collection_name}
+                                GROUP BY metadata->>'source'
+                                """
+                            )
+                        )
+
+                        debug_rows = debug_result.fetchall()
+
+                        print("DEBUG SOURCES:")
+                        for row in debug_rows:
+                            print(repr(row.source), row.count)
+
+                        records = result.fetchall()
+
+                        print(
+                            "DEBUG 3: records count =",
+                            len(records)
+                        )
+
+                    except Exception as e:
+                        print("DEBUG SQL ERROR:", repr(e))
+                        traceback.print_exc()
+                        raise
+
+                else:
+                    search_sql = sql_text(
+                        f"""
+                        SELECT
+                            {PgVectorTableSchemeEnums.TEXT.value} AS text,
+                            {PgVectorTableSchemeEnums.CHUNK_ID.value} AS chunk_id,
+                            {PgVectorTableSchemeEnums.METADATA.value} AS metadata,
+                            1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) AS score
+                        FROM {collection_name}
+                        ORDER BY score DESC
+                        LIMIT {limit}
+                        """
+                    )
+
+                    try:
+                        print("DEBUG 1: before execute")
+
+                        result = await session.execute(
+                            search_sql,
+                            {
+                                "vector": str(vector),
+                            },
+                        )
+
+                        print("DEBUG 2: execute succeeded")
+
+                        records = result.fetchall()
+
+                        print(
+                            "DEBUG 3: records count =",
+                            len(records)
+                        )
+
+                    except Exception as e:
+                        print("DEBUG SQL ERROR:", repr(e))
+                        traceback.print_exc()
+                        raise
 
                 return [
                     RetrievedDocument(

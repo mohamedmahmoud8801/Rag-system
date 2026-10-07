@@ -147,8 +147,11 @@ async def search_index(request: Request, project_id: int, search_request: Search
     )
 
     results = await nlp_controller.search_vector_db_collection(
-        project=project, text=search_request.text, limit=search_request.limit
-    )
+    project=project,
+    text=search_request.text,
+    limit=search_request.limit,
+    file_id=search_request.file_id,
+        )
 
     if not results:
         return JSONResponse(

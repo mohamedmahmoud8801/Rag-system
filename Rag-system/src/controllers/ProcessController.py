@@ -562,6 +562,98 @@ class ProcessController(BaseController):
             )
 
             return None
+
+    def get_excel_structured_content(self, file_id: str):
+        file_path = os.path.join(self.project_path, file_id)
+
+        if not os.path.exists(file_path):
+            self.logger.error(f"Excel file not found: {file_path}")
+            return None
+
+        try:
+            workbook = load_workbook(
+                file_path,
+                data_only=True
+            )
+
+            sheets = []
+
+            for sheet_name in workbook.sheetnames:
+
+                sheet = workbook[sheet_name]
+
+                rows = list(
+                    sheet.iter_rows(values_only=True)
+                )
+
+                if not rows:
+                    continue
+
+                headers = rows[0]
+
+                columns = []
+
+                for header in headers:
+                    if header is None:
+                        continue
+
+                    columns.append(
+                        str(header).strip()
+                    )
+
+                records = []
+
+                for row in rows[1:]:
+
+                    record = {}
+
+                    for index, value in enumerate(row):
+
+                        if index >= len(headers):
+                            continue
+
+                        header = headers[index]
+
+                        if header is None:
+                            continue
+
+                        column_name = str(
+                            header
+                        ).strip()
+
+                        record[column_name] = value
+
+                    # Ignore completely empty rows
+                    if any(
+                        value is not None
+                        for value in record.values()
+                    ):
+                        records.append(record)
+
+                sheets.append(
+                    {
+                        "sheet_name": sheet_name,
+                        "columns": columns,
+                        "row_count": len(records),
+                        "records": records,
+                    }
+                )
+
+            if not sheets:
+                self.logger.error(
+                    f"No structured data found in Excel file: {file_id}"
+                )
+                return None
+
+            return sheets
+
+        except Exception as e:
+            self.logger.exception(
+                f"Error extracting structured Excel data "
+                f"{file_id}: {e}"
+            )
+            return None
+    
     def get_image_mime_type(self, file_id: str):
 
         file_ext = self.get_file_extension(
@@ -1008,28 +1100,50 @@ class ProcessController(BaseController):
 
             return None
 
-    def process_simpler_splitter(self,texts: List[str], metadatas: List[dict], chunk_size: int,splitter_tag: str="\n"):
-        full_text = " ".join(texts)
-        lines = [ doc.strip() for doc in full_text.split(splitter_tag) if len(doc.strip()) > 1 ]
-
+    def process_simpler_splitter(
+    self,
+    texts: List[str],
+    metadatas: List[dict],
+    chunk_size: int,
+    splitter_tag: str = "\n"
+):
         chunks = []
-        current_chunk = ""
 
-        for line in lines:
-            current_chunk += line + splitter_tag
+        for text, metadata in zip(texts, metadatas):
 
-            if len (current_chunk) >= chunk_size:
-                chunks.append(Document(
-                    page_content=current_chunk.strip(),
-                    metadata={}
-                ))
-                current_chunk = ""
+            full_text = text or ""
 
-        if len(current_chunk)>=0:
-            chunks.append(Document(
-                page_content=current_chunk.strip(),
-                metadata={}
-            ))
+            lines = [
+                doc.strip()
+                for doc in full_text.split(splitter_tag)
+                if len(doc.strip()) > 1
+            ]
+
+            current_chunk = ""
+
+            for line in lines:
+
+                current_chunk += line + splitter_tag
+
+                if len(current_chunk) >= chunk_size:
+
+                    chunks.append(
+                        Document(
+                            page_content=current_chunk.strip(),
+                            metadata={**metadata}
+                        )
+                    )
+
+                    current_chunk = ""
+
+            if current_chunk.strip():
+
+                chunks.append(
+                    Document(
+                        page_content=current_chunk.strip(),
+                        metadata={**metadata}
+                    )
+                )
 
         return chunks
 

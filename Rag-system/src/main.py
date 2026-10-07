@@ -1,12 +1,15 @@
 from fastapi import FastAPI
-from routes import base, data,nlp
+from routes import base, data, nlp, sql,video,knowledge,router
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
+
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.templates.template_parser import TemplateParser
 from stores.reranker.RerankerProviderFactory import RerankerProviderFactory
-from sqlalchemy.ext.asyncio import create_async_engine,AsyncSession
+from stores.sql.templates import SQLTemplateParser
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 app = FastAPI()
@@ -37,11 +40,15 @@ async def startup_span():
     )
 
     app.template_parser = TemplateParser(language=settings.PRIMARY_LANG,default_language=settings.DEFAULT_LANG)
+    app.sql_template_parser = SQLTemplateParser(
+    language=settings.PRIMARY_LANG,
+    default_language=settings.DEFAULT_LANG
+)
 
 
 async def shutdown_span():  
     # app.mongo_conn.close()
-    app.db_engine.dispose ()
+    await app.db_engine.dispose()
     await app.vectordb_client.disconnect()
 
 
@@ -55,3 +62,7 @@ app.on_event("shutdown")(shutdown_span)
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
+app.include_router(sql.sql_router)
+app.include_router(video.video_router)
+app.include_router(knowledge.knowledge_router)
+app.include_router(router.router_router)

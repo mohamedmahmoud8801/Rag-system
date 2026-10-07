@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     COHERE_API_KEY: str = None
     HUGGINGFACE_API_KEY: str = None
     HUGGINGFACE_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    HUGGINGFACE_EMBEDDING_SIZE: int = 384
+    HUGGINGFACE_EMBEDDING_SIZE: int = 768
+    GENERATION_TIMEOUT: float = 3600.0
 
     GENERATION_MODEL_ID_LITERAL: List[str] = None
     GENERATION_MODEL_ID: str = None
@@ -65,6 +66,27 @@ class Settings(BaseSettings):
 
     RERANKER_PROVIDER:str = "huggingface"
     RERANKER_MODEL_ID:str = "BAAI/bge-reranker-v2-m3"
+    RERANK_ENABLED: bool = True
+    FINAL_CONTEXTS: int = 5
+# ======================= SQL =======================
+
+    SQL_PROVIDER: str = "sqlite"
+    SQL_DATABASE_URL: str
+    SQL_MAX_ROWS: int = 100
+    SQL_MAX_RETRIES: int = 2
+
+# ======================= VIDEO =======================
+
+    VIDEO_PROVIDER: str = "youtube"
+
+    VIDEO_DEFAULT_CHUNK_SIZE: int = 1200
+    VIDEO_DEFAULT_CHUNK_OVERLAP: int = 200
+
+    VIDEO_DEFAULT_RETRIEVAL_LIMIT: int = 10
+    VIDEO_DEFAULT_GENERATION_MAX_TOKENS: int = 2000
+    VIDEO_DEFAULT_GENERATION_TEMPERATURE: float = 0.1
+
+
 
     model_config = SettingsConfigDict(
     env_file=Path(__file__).resolve().parent.parent / ".env",

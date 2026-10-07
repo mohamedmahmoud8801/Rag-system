@@ -1,14 +1,23 @@
 from enum import Enum
 
+
 class LLMEnums(Enum):
     OPENAI = "OPENAI"
     COHERE = "COHERE"
     HUGGINGFACE = "HUGGINGFACE"
 
+
+class LLMTaskEnum(Enum):
+    GENERATION = "generation"
+    EMBEDDING = "embedding"
+    SQL_GENERATION = "sql_generation"
+
+
 class OpenAIEnums(Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+
 
 class CoHereEnums(Enum):
     SYSTEM = "SYSTEM"
@@ -23,6 +32,7 @@ class HuggingFaceEnums(Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+
 
 class DocumentTypeEnum(Enum):
     DOCUMENT = "document"
