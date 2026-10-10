@@ -1,0 +1,69 @@
+[
+  {
+    "id": "Q01",
+    "question": "Who are the authors of the paper \"Attention Is All You Need\"?",
+    "reference": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin.",
+    "score": 0.125,
+    "supported_claims": 1,
+    "total_claims": 8,
+    "claims": [
+      {
+        "claim": "Ashish Vaswani is an author of the paper.",
+        "supported": true,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain avaswani@google.com",
+        "evidence_verified": true,
+        "reason": "The context explicitly lists Ashish Vaswani as an author."
+      },
+      {
+        "claim": "Noam Shazeer is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain noam@google.com",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Noam Shazeer as an author."
+      },
+      {
+        "claim": "Niki Parmar is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain nikip@google.com",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Niki Parmar as an author."
+      },
+      {
+        "claim": "Jakob Uszkoreit is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain usz@google.com",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Jakob Uszkoreit as an author."
+      },
+      {
+        "claim": "Llion Jones is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain noam@google.com Llion Jones",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Llion Jones as an author."
+      },
+      {
+        "claim": "Aidan N. Gomez is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain noam@google.com Aidan N. Gomez",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Aidan N. Gomez as an author."
+      },
+      {
+        "claim": "Lukasz Kaiser is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain noam@google.com Lukasz Kaiser",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Lukasz Kaiser as an author."
+      },
+      {
+        "claim": "Illia Polosukhin is an author of the paper.",
+        "supported": false,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain noam@google.com Illia Polosukhin",
+        "evidence_verified": false,
+        "reason": "Rejected: the judge's evidence quote was missing or could not be verified in the retrieved contexts. Original judge reason: The context explicitly lists Illia Polosukhin as an author."
+      }
+    ],
+    "error": null
+  }
+]

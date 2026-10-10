@@ -1,0 +1,53 @@
+[
+  {
+    "id": "Q01",
+    "question": "Who are the authors of the paper \"Attention Is All You Need\"?",
+    "reference": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin.",
+    "score": 1.0,
+    "supported_claims": 8,
+    "total_claims": 8,
+    "claims": [
+      {
+        "claim": "Ashish Vaswani is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Noam Shazeer is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Niki Parmar is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Jakob Uszkoreit is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Llion Jones is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Aidan N. Gomez is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Lukasz Kaiser is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      },
+      {
+        "claim": "Illia Polosukhin is an author of the paper.",
+        "supported": true,
+        "reason": "Evidence found in Context 1."
+      }
+    ],
+    "error": null
+  }
+]

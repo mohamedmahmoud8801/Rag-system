@@ -1,0 +1,93 @@
+[
+  {
+    "id": "Q01",
+    "question": "Who are the authors of the paper \"Attention Is All You Need\"?",
+    "reference": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin.",
+    "score": 0.5,
+    "supported_claims": 4,
+    "total_claims": 8,
+    "claims": [
+      {
+        "claim": "Ashish Vaswani is an author of the paper.",
+        "supported": true,
+        "judge_supported": true,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain avaswani@google.com",
+        "evidence_verified": true,
+        "verification_status": "verified",
+        "retry_attempted": false,
+        "reason": "The context explicitly lists Ashish Vaswani as an author."
+      },
+      {
+        "claim": "Noam Shazeer is an author of the paper.",
+        "supported": true,
+        "judge_supported": true,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain avaswani@google.com Noam Shazeer∗ Google Brain noam@google.com",
+        "evidence_verified": true,
+        "verification_status": "verified",
+        "retry_attempted": false,
+        "reason": "The context explicitly lists Noam Shazeer as an author."
+      },
+      {
+        "claim": "Niki Parmar is an author of the paper.",
+        "supported": true,
+        "judge_supported": true,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain avaswani@google.com Noam Shazeer∗ Google Brain noam@google.com Niki Parmar∗ Google Research nikip@google.com",
+        "evidence_verified": true,
+        "verification_status": "verified",
+        "retry_attempted": false,
+        "reason": "The context explicitly lists Niki Parmar as an author."
+      },
+      {
+        "claim": "Jakob Uszkoreit is an author of the paper.",
+        "supported": true,
+        "judge_supported": true,
+        "evidence": "Attention Is All You Need Ashish Vaswani∗ Google Brain avaswani@google.com Noam Shazeer∗ Google Brain noam@google.com Niki Parmar∗ Google Research nikip@google.com Jakob Uszkoreit∗ Google Research usz@google.com",
+        "evidence_verified": true,
+        "verification_status": "verified",
+        "retry_attempted": false,
+        "reason": "The context explicitly lists Jakob Uszkoreit as an author."
+      },
+      {
+        "claim": "Llion Jones is an author of the paper.",
+        "supported": false,
+        "judge_supported": false,
+        "evidence": "",
+        "evidence_verified": false,
+        "verification_status": "judge_marked_unsupported",
+        "retry_attempted": false,
+        "reason": "The context does not mention Llion Jones as an author."
+      },
+      {
+        "claim": "Aidan N. Gomez is an author of the paper.",
+        "supported": false,
+        "judge_supported": false,
+        "evidence": "",
+        "evidence_verified": false,
+        "verification_status": "judge_marked_unsupported",
+        "retry_attempted": false,
+        "reason": "The context does not mention Aidan N. Gomez as an author."
+      },
+      {
+        "claim": "Lukasz Kaiser is an author of the paper.",
+        "supported": false,
+        "judge_supported": false,
+        "evidence": "",
+        "evidence_verified": false,
+        "verification_status": "judge_marked_unsupported",
+        "retry_attempted": false,
+        "reason": "The context does not mention Lukasz Kaiser as an author."
+      },
+      {
+        "claim": "Illia Polosukhin is an author of the paper.",
+        "supported": false,
+        "judge_supported": false,
+        "evidence": "",
+        "evidence_verified": false,
+        "verification_status": "judge_marked_unsupported",
+        "retry_attempted": false,
+        "reason": "The context does not mention Illia Polosukhin as an author."
+      }
+    ],
+    "error": null
+  }
+]

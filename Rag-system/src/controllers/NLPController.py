@@ -200,6 +200,11 @@ class NLPController(BaseController):
         else:
             reranked_results = results[:settings.FINAL_CONTEXTS]
 
+        if reranked_results and reranked_results[0].rerank_score is not None:
+            if reranked_results[0].rerank_score >= 0.5:
+                reranked_results = [
+                    d for d in reranked_results
+                    if d.rerank_score is None or d.rerank_score >= 0.05]
         # ==============================
         # DEBUG: AFTER RERANK
         # ==============================
@@ -219,6 +224,92 @@ class NLPController(BaseController):
 
         return reranked_results
 
+    async def expand_neighbors(self, retrieved_documents, db_client):
+        """
+        يجيب الـ chunks المجاورة: أعلى chunk دايمًا، والباقي لو rerank_score >= threshold.
+        """
+        settings = get_settings()
+        window = getattr(settings, "NEIGHBOR_WINDOW", 1)
+        min_rerank = getattr(settings, "NEIGHBOR_MIN_RERANK", 0.5)
+
+        if window <= 0 or db_client is None:
+            return retrieved_documents
+
+        chunk_model = await ChunkModel.create_instance(db_client=db_client)
+
+        expanded, seen = [], set()
+
+        def add(doc):
+            if doc.chunk_id not in seen:
+                expanded.append(doc)
+                seen.add(doc.chunk_id)
+
+        for rank, doc in enumerate(retrieved_documents):
+            add(doc)
+
+            # أعلى نتيجة عند الـ reranker بتتوسع دايمًا، والباقي بالـ threshold
+            is_top = rank == 0
+            weak = doc.rerank_score is not None and doc.rerank_score < min_rerank
+            if weak and not is_top:
+                continue
+
+            anchor = await chunk_model.get_chunk(chunk_id=doc.chunk_id)
+            if not anchor:
+                continue
+
+            neighbors = []
+            for cid in range(doc.chunk_id - window, doc.chunk_id + window + 1):
+                if cid == doc.chunk_id or cid in seen:
+                    continue
+
+                chunk = await chunk_model.get_chunk(chunk_id=cid)
+
+                # لازم يكون من نفس الملف
+                if not chunk or chunk.chunk_asset_id != anchor.chunk_asset_id:
+                    continue
+                if not chunk.chunk_text:
+                    continue
+
+                neighbors.append(
+                    doc.model_copy(update={
+                        "chunk_id": chunk.chunk_id,
+                        "text": chunk.chunk_text,
+                        "metadata": chunk.chunk_metadata or {},
+                        "score": 0.0,
+                        "rerank_score": None,
+                    })
+                )
+
+            # رتّب الجيران بـ chunk_id عشان النص يتقرأ بالترتيب
+            for n in sorted(neighbors, key=lambda d: d.chunk_id):
+                add(n)
+
+        print("\n========== AFTER NEIGHBOR EXPANSION ==========")
+        for i, d in enumerate(expanded, 1):
+            print(f"{i}. chunk_id={d.chunk_id} rerank_score={d.rerank_score}")
+
+        return expanded
+
+        
+    # ===== ضيف هنا =====
+    def merge_consecutive_chunks(self, docs):
+        by_id = {d.chunk_id: d for d in docs}
+        pos = {d.chunk_id: i for i, d in enumerate(docs)}
+
+        groups, cur = [], []
+        for cid in sorted(by_id):
+            if cur and cid == cur[-1] + 1:
+                cur.append(cid)
+            else:
+                if cur:
+                    groups.append(cur)
+                cur = [cid]
+        if cur:
+            groups.append(cur)
+
+        groups.sort(key=lambda g: min(pos[c] for c in g))
+        return [" ".join(by_id[c].text.strip() for c in g) for g in groups]
+    # ===================
 
     async def enrich_retrieved_documents(self,retrieved_documents,db_client):
         chunk_model = await ChunkModel.create_instance(
@@ -263,7 +354,6 @@ class NLPController(BaseController):
             project=project,
             text=query,
             limit=limit,
-            file_id=file_id
         )
        
         enriched_documents = await self.enrich_retrieved_documents(
@@ -989,16 +1079,20 @@ class NLPController(BaseController):
 
             return None
     async def answer_rag_question(
-        self,
-        project: Project,
-        query: str,
-        limit: int = 10,
-        return_contexts: bool = False,
-        file_id: str = None,
-    ):
+    self,
+    project: Project,
+    query: str,
+    limit: int = 10,
+    return_contexts: bool = False,
+    file_id: str = None,
+    db_client = None
+):
         answer, full_prompt, chat_history = None, None, None
 
-        # step1: retrieve related documents
+        # ============================================================
+        # 1. Retrieve documents
+        # ============================================================
+
         retrieved_documents = await self.search_vector_db_collection(
             project=project,
             text=query,
@@ -1007,17 +1101,34 @@ class NLPController(BaseController):
         )
 
         if not retrieved_documents or len(retrieved_documents) == 0:
+
             if return_contexts:
-                return answer, full_prompt, chat_history, []
+                return (
+                    answer,
+                    full_prompt,
+                    chat_history,
+                    [],
+                    []
+                )
+
             return answer, full_prompt, chat_history
 
-        
+        retrieved_documents = await self.expand_neighbors(
+            retrieved_documents=retrieved_documents,
+            db_client=db_client,
+        )
 
-        # step2: Construct LLM prompt
+
+        # ============================================================
+        # 2. Construct LLM prompt
+        # ============================================================
+
         system_prompt = self.template_parser.get(
             "rag",
             "system_prompt"
         )
+
+        merged_texts = self.merge_consecutive_chunks(retrieved_documents)
 
         documents_prompts = "\n".join([
             self.template_parser.get(
@@ -1025,10 +1136,10 @@ class NLPController(BaseController):
                 "document_prompt",
                 {
                     "doc_num": idx + 1,
-                    "chunk_text": self.generation_client.process_text(doc.text),
+                    "chunk_text": self.generation_client.process_text(text),
                 }
             )
-            for idx, doc in enumerate(retrieved_documents)
+            for idx, text in enumerate(merged_texts)
         ])
 
         footer_prompt = self.template_parser.get(
@@ -1039,7 +1150,10 @@ class NLPController(BaseController):
             }
         )
 
-        # step3: Construct Generation Client Prompts
+        # ============================================================
+        # 3. Construct generation prompts
+        # ============================================================
+
         chat_history = [
             self.generation_client.construct_prompt(
                 prompt=system_prompt,
@@ -1052,19 +1166,68 @@ class NLPController(BaseController):
             footer_prompt
         ])
 
-        # step4: Retrieve the Answer
+        # ============================================================
+        # 4. Generate answer
+        # ============================================================
+
         answer = self.generation_client.generate_text(
             prompt=full_prompt,
             chat_history=chat_history
         )
 
+        # ============================================================
+        # 5. Build contexts + sources
+        # ============================================================
+
         if return_contexts:
-            contexts = [
-                doc.text
-                for doc in retrieved_documents
-                if getattr(doc, "text", None)
-            ]
 
-            return answer, full_prompt, chat_history, contexts
+            contexts = list(merged_texts)
+            sources = []
 
-        return answer, full_prompt, chat_history
+            seen_sources = set()
+
+            for doc in retrieved_documents:
+
+               
+                # ----------------------------------------------------
+                # Source metadata
+                # ----------------------------------------------------
+
+                metadata = getattr(doc, "metadata", None) or {}
+
+                file_name = (
+                    metadata.get("original_filename")
+                    or metadata.get("source")
+                    or metadata.get("file_id")
+                    or metadata.get("filename")
+                )
+
+                page = metadata.get("page")
+
+                if not file_name:
+                    continue
+
+                source_key = (
+                    file_name,
+                    page
+                )
+
+                if source_key in seen_sources:
+                    continue
+
+                seen_sources.add(source_key)
+
+                sources.append({
+                    "file_name": file_name,
+                    "page": page
+                })
+
+            return (
+                answer,
+                full_prompt,
+                chat_history,
+                contexts,
+                sources
+            )
+
+        return answer, full_prompt, chat_history,

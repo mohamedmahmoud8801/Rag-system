@@ -11,4 +11,4 @@ class SearchRequest(BaseModel):
 
     limit: Optional[int] = 5
 
-    file_id: Optional[str] = None
+    

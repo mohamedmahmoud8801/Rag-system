@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from helpers.config import get_settings
 
 
-FILE_ID = "3dcnox5etx82_NIPS2017attentionisallyyouneedPaper.pdf"
+FILE_ID = "6owdmrzaqq3o_NIPS2017attentionisallyouneedPaper.pdf"
 COLLECTION = "collection_768_1"
 
 
@@ -32,11 +32,15 @@ async def main():
     )
 
     terms = [
-        "Adam",
-        "Penn Treebank",
-        "Llion Jones",
-        "Label Smoothing",
-    ]
+    "Ashish Vaswani",
+    "Noam Shazeer",
+    "Niki Parmar",
+    "Jakob Uszkoreit",
+    "Llion Jones",
+    "Aidan N. Gomez",
+    "Lukasz Kaiser",
+    "Illia Polosukhin",
+]
 
     async with db_client() as session:
 

@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     RERANKER_MODEL_ID:str = "BAAI/bge-reranker-v2-m3"
     RERANK_ENABLED: bool = True
     FINAL_CONTEXTS: int = 5
+    NEIGHBOR_WINDOW: int = 2
+    NEIGHBOR_MIN_RERANK: float = 0.5
 # ======================= SQL =======================
 
     SQL_PROVIDER: str = "sqlite"

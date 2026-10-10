@@ -1,45 +1,25 @@
 """
 RAGAS evaluator for the mini-rag project.
 
-Run examples (from the src/ folder):
+Run from the src/ folder:
 
-    # quick smoke test: first question only
-    PYTHONPATH=. python evaluation/ragas_evaluator.py --limit 1
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --ids Q01 --tag test
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --tag full
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --category "Multi-hop"
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --limit 5
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --metrics faithfulness,context_recall
+    PYTHONPATH=. python evaluation/ragas_evaluator.py --atomic      # extra slow diagnostic
 
-    # evaluate all 42 golden questions
-    PYTHONPATH=. python evaluation/ragas_evaluator.py
-
-    # evaluate specific questions by id
-    PYTHONPATH=. python evaluation/ragas_evaluator.py \
-        --ids Q04,Q05,Q13,Q19,Q25,Q31 --tag smoke
-
-    # evaluate one category only
-    PYTHONPATH=. python evaluation/ragas_evaluator.py \
-        --category "Multi-hop" --tag multihop
-
-    # explicitly specify the JSON dataset
-    PYTHONPATH=. python evaluation/ragas_evaluator.py \
-        --json evaluation/datasets/rag_golden_questions_42.json
-
-    # evaluate a different indexed PDF
-    PYTHONPATH=. python evaluation/ragas_evaluator.py \
-        --file-id <file_id>
-
-Optional environment variables:
-
-    RAGAS_JUDGE_MODEL
-        Judge model served by Ollama.
-        Default: qwen2.5:7b-instruct
-
-    RAGAS_JUDGE_URL
-        Ollama OpenAI-compatible URL.
-        Default: http://localhost:11434/v1
+Environment variables:
+    RAGAS_JUDGE_MODEL  (default: qwen2.5:7b-instruct)
+    RAGAS_JUDGE_URL    (default: http://localhost:11434/v1)
 """
 
 import argparse
 import asyncio
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -49,191 +29,83 @@ from datasets import Dataset
 from openai import OpenAI
 from ragas import evaluate
 from ragas.llms import llm_factory
-from ragas.metrics import (
-    ContextPrecision,
-    ContextRecall,
-    Faithfulness,
-)
+from ragas.metrics import ContextPrecision, ContextRecall, Faithfulness
 from ragas.run_config import RunConfig
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from controllers.NLPController import NLPController
 from helpers.config import get_settings
+from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
+from models.enums.AssetTypeEnum import AssetTypeEnum
 from stores.llm.LLMProviderFactory import LLMProviderFactory
-from stores.reranker.RerankerProviderFactory import (
-    RerankerProviderFactory,
-)
-from stores.vectordb.VectorDBProviderFactory import (
-    VectorDBProviderFactory,
-)
 from stores.llm.templates.template_parser import TemplateParser
+from stores.reranker.RerankerProviderFactory import RerankerProviderFactory
+from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 
 
 # ==========================================================================
-# Paths / Settings
+# Config
 # ==========================================================================
 
-EVALUATION_DIR = Path(__file__).resolve().parent
+EVAL_DIR = Path(__file__).resolve().parent
+DEFAULT_DATASET = EVAL_DIR / "datasets" / "rag_golden_questions_42.json"
+RESULTS_DIR = EVAL_DIR / "results"
 
-DEFAULT_DATASET = (
-    EVALUATION_DIR
-    / "datasets"
-    / "rag_golden_questions_42.json"
-)
+JUDGE_MODEL = os.getenv("RAGAS_JUDGE_MODEL", "qwen2.5:7b-instruct")
+JUDGE_URL = os.getenv("RAGAS_JUDGE_URL", "http://localhost:11434/v1")
 
-# NOTE: must match the asset name stored in the `assets` table exactly
-# ("allyouneed", not "allyyouneed").
-DEFAULT_FILE_ID = (
-    "3dcnox5etx82_NIPS2017attentionisallyouneedPaper.pdf"
-)
-
-
-# ==========================================================================
-# RAGAS judge
-# ==========================================================================
-
-JUDGE_MODEL = os.getenv(
-    "RAGAS_JUDGE_MODEL",
-    "qwen2.5:7b-instruct",
-)
-
-JUDGE_URL = os.getenv(
-    "RAGAS_JUDGE_URL",
-    "http://localhost:11434/v1",
-)
-
-
-# ==========================================================================
-# Timeouts
-# ==========================================================================
-
-CALL_TIMEOUT = 3600.0
-JOB_TIMEOUT = 7200
-
-
-# ==========================================================================
-# RAG settings
-# ==========================================================================
-
+CALL_TIMEOUT = 3600.0   # per judge HTTP call
+JOB_TIMEOUT = 7200      # per RAGAS job
 RETRIEVAL_LIMIT = 10
+TARGET_PDF = "NIPS-2017-attention-is-all-you-need-Paper.pdf"
 
-GEN_RETRIES = 1
-
-GEN_TIMEOUT = 3700
-
-
-# ==========================================================================
-# Results
-# ==========================================================================
-
-RESULTS_DIR = (
-    EVALUATION_DIR
-    / "results"
-)
+METRIC_CLASSES = {
+    "faithfulness": Faithfulness,
+    "context_precision": ContextPrecision,
+    "context_recall": ContextRecall,
+}
 
 
 # ==========================================================================
-# Build RAG components
+# RAG components
 # ==========================================================================
 
 async def build_rag_components():
-
-    settings = get_settings()
-
-    # ----------------------------------------------------------------------
-    # PostgreSQL
-    # ----------------------------------------------------------------------
-
-    postgres_conn = (
-        f"postgresql+asyncpg://"
-        f"{settings.POSTGRES_USERNAME}:"
-        f"{settings.POSTGRES_PASSWORD}@"
-        f"{settings.POSTGRES_HOST}:"
-        f"{settings.POSTGRES_PORT}/"
-        f"{settings.POSTGRES_MAIN_DATABASE}"
-    )
-
-    from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        create_async_engine,
-    )
-    from sqlalchemy.orm import sessionmaker
+    s = get_settings()
 
     db_engine = create_async_engine(
-        postgres_conn
+        f"postgresql+asyncpg://{s.POSTGRES_USERNAME}:{s.POSTGRES_PASSWORD}"
+        f"@{s.POSTGRES_HOST}:{s.POSTGRES_PORT}/{s.POSTGRES_MAIN_DATABASE}"
     )
+    db_client = sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 
-    db_client = sessionmaker(
-        db_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
+    llm_factory_project = LLMProviderFactory(s)
 
-    # ----------------------------------------------------------------------
-    # LLM
-    # ----------------------------------------------------------------------
+    generation_client = llm_factory_project.create(provider=s.GENERATION_BACKEND)
+    generation_client.set_generation_model(model_id=s.GENERATION_MODEL_ID)
 
-    llm_factory_project = LLMProviderFactory(
-        settings
-    )
-
-    generation_client = llm_factory_project.create(
-        provider=settings.GENERATION_BACKEND
-    )
-
-    generation_client.set_generation_model(
-        model_id=settings.GENERATION_MODEL_ID
-    )
-
-    # ----------------------------------------------------------------------
-    # Embedding
-    # ----------------------------------------------------------------------
-
-    embedding_client = llm_factory_project.create(
-        provider=settings.EMBEDDING_BACKEND
-    )
-
+    embedding_client = llm_factory_project.create(provider=s.EMBEDDING_BACKEND)
     embedding_client.set_embedding_model(
-        model_id=settings.EMBEDDING_MODEL_ID,
-        embedding_size=settings.EMBEDDING_MODEL_SIZE,
+        model_id=s.EMBEDDING_MODEL_ID,
+        embedding_size=s.EMBEDDING_MODEL_SIZE,
     )
 
-    # ----------------------------------------------------------------------
-    # Vector DB
-    # ----------------------------------------------------------------------
-
-    vectordb_factory = VectorDBProviderFactory(
-        config=settings,
-        db_client=db_client,
-    )
-
-    vectordb_client = vectordb_factory.create(
-        provider=settings.VECTOR_DB_BACKEND
-    )
-
+    vectordb_client = VectorDBProviderFactory(
+        config=s, db_client=db_client
+    ).create(provider=s.VECTOR_DB_BACKEND)
     await vectordb_client.connect()
 
-    # ----------------------------------------------------------------------
-    # Reranker
-    # ----------------------------------------------------------------------
-
     reranker_client = RerankerProviderFactory.create(
-        provider=settings.RERANKER_PROVIDER,
-        model_id=settings.RERANKER_MODEL_ID,
+        provider=s.RERANKER_PROVIDER,
+        model_id=s.RERANKER_MODEL_ID,
     )
-
-    # ----------------------------------------------------------------------
-    # Template parser
-    # ----------------------------------------------------------------------
 
     template_parser = TemplateParser(
-        language=settings.PRIMARY_LANG,
-        default_language=settings.DEFAULT_LANG,
+        language=s.PRIMARY_LANG,
+        default_language=s.DEFAULT_LANG,
     )
-
-    # ----------------------------------------------------------------------
-    # NLP Controller
-    # ----------------------------------------------------------------------
 
     nlp_controller = NLPController(
         vectordb_client=vectordb_client,
@@ -243,261 +115,218 @@ async def build_rag_components():
         template_parser=template_parser,
     )
 
-    # ----------------------------------------------------------------------
-    # Project
-    # ----------------------------------------------------------------------
+    project_model = await ProjectModel.create_instance(db_client=db_client)
+    project = await project_model.get_project_or_create_one(project_id=1)
 
-    project_model = await ProjectModel.create_instance(
-        db_client=db_client
+    return nlp_controller, project, db_engine, db_client, vectordb_client
+
+
+async def resolve_file_id(db_client, file_id):
+    """Return file_id as given, or find the evaluation PDF automatically."""
+    if file_id:
+        return file_id
+
+    asset_model = await AssetModel.create_instance(db_client=db_client)
+    assets = await asset_model.get_all_project_assets(
+        asset_project_id=1,
+        asset_type=AssetTypeEnum.FILE.value,
     )
 
-    project = await project_model.get_project_or_create_one(
-        project_id=1
-    )
+    target = TARGET_PDF.lower()
+    matches = [
+        a for a in assets
+        if (a.asset_config or {}).get("original_filename", "")
+        .lower().replace("_", "-") == target
+    ]
 
-    return (
-        nlp_controller,
-        project,
-        db_engine,
-        db_client,
-        vectordb_client,
-    )
+    if len(matches) != 1:
+        available = [
+            (a.asset_config or {}).get("original_filename") or a.asset_name
+            for a in assets
+        ]
+        raise RuntimeError(
+            f"Could not uniquely identify the evaluation PDF. "
+            f"Matches: {len(matches)}. Available files: {available}"
+        )
+
+    return matches[0].asset_name
 
 
 # ==========================================================================
-# Golden dataset
+# Dataset helpers
 # ==========================================================================
 
-def load_questions_from_json(json_path):
-    """
-    Load the RAG golden-set JSON.
+def load_questions(path):
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Golden dataset not found: {path}")
 
-    Required fields:
-
-        id
-        question
-        ground_truth
-
-    Optional metadata:
-
-        category
-        reference
-        source_section
-        needs_multiple_chunks
-        note
-    """
-
-    json_path = Path(json_path)
-
-    if not json_path.exists():
-        raise FileNotFoundError(
-            f"Golden dataset not found:\n{json_path}"
-        )
-
-    with open(
-        json_path,
-        "r",
-        encoding="utf-8",
-    ) as f:
-        data = json.load(f)
-
-    if not isinstance(data, list):
-        raise ValueError(
-            "Golden dataset JSON must contain "
-            "a list of question objects."
-        )
-
-    required_fields = {
-        "id",
-        "question",
-        "ground_truth",
-    }
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list) or not data:
+        raise ValueError("Golden dataset must be a non-empty JSON list.")
 
     items = []
-
-    for index, row in enumerate(
-        data,
-        start=1,
-    ):
-
+    for i, row in enumerate(data, start=1):
         if not isinstance(row, dict):
+            raise ValueError(f"Record {i} is not an object.")
+
+        question = str(row.get("question", "")).strip()
+        truth = str(row.get("ground_truth", "")).strip()
+
+        if "id" not in row or not question or not truth:
             raise ValueError(
-                f"Invalid record at JSON index {index}. "
-                "Each record must be an object."
+                f"Record {i} needs a non-empty id, question and ground_truth."
             )
 
-        missing_fields = (
-            required_fields
-            - set(row.keys())
-        )
-
-        if missing_fields:
-            raise ValueError(
-                f"Record {index} is missing "
-                f"required fields: "
-                f"{sorted(missing_fields)}"
-            )
-
-        question = str(
-            row.get("question", "")
-        ).strip()
-
-        ground_truth = str(
-            row.get("ground_truth", "")
-        ).strip()
-
-        if not question:
-            raise ValueError(
-                f"Record {index} has an empty question."
-            )
-
-        if not ground_truth:
-            raise ValueError(
-                f"Record {index} has an empty ground_truth."
-            )
-
-        items.append(
-            {
-                "id": row["id"],
-                "category": row.get(
-                    "category",
-                    "",
-                ),
-                "question": question,
-                "ground_truth": ground_truth,
-                "reference": row.get(
-                    "reference",
-                    "",
-                ),
-                "source_section": row.get(
-                    "source_section",
-                    "",
-                ),
-                "needs_multiple_chunks": row.get(
-                    "needs_multiple_chunks",
-                    False,
-                ),
-                "note": row.get(
-                    "note",
-                    "",
-                ),
-            }
-        )
-
-    if not items:
-        raise ValueError(
-            f"No questions found in:\n{json_path}"
-        )
+        items.append({
+            "id": row["id"],
+            "category": row.get("category", ""),
+            "question": question,
+            "ground_truth": truth,
+            "source_section": row.get("source_section", ""),
+            "needs_multiple_chunks": row.get("needs_multiple_chunks", False),
+        })
 
     return items
 
 
-# ==========================================================================
-# Context normalization
-# ==========================================================================
-
 def normalize_contexts(contexts):
-    """
-    Make sure retrieved_contexts is a list of plain strings.
-    """
-
+    """Make sure retrieved_contexts is a list of non-empty plain strings."""
     out = []
-
-    for context in contexts or []:
-
-        if isinstance(context, str):
-
-            text = context.strip()
-
-            if text:
-                out.append(text)
-
-        elif isinstance(context, dict):
-
-            value = context.get(
-                "text",
-                context,
-            )
-
-            text = str(value).strip()
-
-            if text:
-                out.append(text)
-
-        else:
-
-            value = getattr(
-                context,
-                "text",
-                context,
-            )
-
-            text = str(value).strip()
-
-            if text:
-                out.append(text)
-
+    for c in contexts or []:
+        value = c.get("text", c) if isinstance(c, dict) else getattr(c, "text", c)
+        text = str(value).strip()
+        if text:
+            out.append(text)
     return out
 
 
 # ==========================================================================
-# RAG result validation
+# Judge
 # ==========================================================================
 
-def validate_rag_result(
-    answer,
-    contexts,
-):
-    """
-    Validate that the RAG pipeline actually returned
-    usable output before sending it to RAGAS.
-
-    RAGAS should never receive a fake/empty RAG result.
-    """
-
-    problems = []
-
-    if not isinstance(answer, str):
-        problems.append(
-            f"answer has unexpected type: "
-            f"{type(answer).__name__}"
-        )
-
-    if not answer or not answer.strip():
-        problems.append(
-            "answer is empty"
-        )
-
-    if not contexts:
-        problems.append(
-            "retrieved_contexts is empty"
-        )
-
-    return problems
-
-
-# ==========================================================================
-# RAGAS judge
-# ==========================================================================
-
-def build_ragas_llm():
-
-    client = OpenAI(
+def build_judge_client():
+    return OpenAI(
         base_url=JUDGE_URL,
         api_key="ollama",
-        timeout=httpx.Timeout(
-            CALL_TIMEOUT,
-            connect=10.0,
-        ),
+        timeout=httpx.Timeout(CALL_TIMEOUT, connect=10.0),
         max_retries=0,
     )
 
-    return llm_factory(
-        model=JUDGE_MODEL,
-        provider="openai",
-        client=client,
-        temperature=0.0,
+
+ATOMIC_SYSTEM_PROMPT = """
+You are a strict retrieval-evaluation judge.
+
+Measure how much of a reference answer is supported by the retrieved contexts.
+
+Rules:
+1. Decompose the reference into the smallest meaningful, independently
+   verifiable factual claims. Preserve all factual details.
+2. Split lists of people, entities, numbers and properties into
+   independent claims. Do not split a person's name into tokens.
+3. Do not use outside knowledge. Evaluate every claim independently.
+4. A claim is supported only if the contexts explicitly provide
+   sufficient evidence.
+5. For each supported claim give a short quote copied verbatim from a
+   retrieved context. The quote itself must contain the needed
+   information (an email address alone does not prove a full name).
+6. Never invent or paraphrase a quote. If there is no sufficient
+   evidence, mark the claim false and use an empty evidence string.
+
+Return only a valid JSON object:
+{
+  "claims": [
+    {
+      "claim": "An independently verifiable factual claim",
+      "supported": true,
+      "evidence": "Exact quote from a retrieved context",
+      "reason": "Why the quote supports the claim"
+    }
+  ]
+}
+"""
+
+
+def atomic_context_recall(client, question, reference, contexts):
+    """
+    Optional diagnostic: share of atomic reference claims supported by the
+    contexts. A claim counts only if the judge's evidence quote is found
+    verbatim in one of the contexts. One judge call per question.
+    """
+
+    def norm(text):
+        return re.sub(r"\s+", " ", str(text or "").casefold()).strip()
+
+    def failed(error):
+        return {"score": None, "supported_claims": 0, "total_claims": 0,
+                "claims": [], "error": error}
+
+    if not contexts:
+        return failed("No retrieved contexts.")
+
+    normalized = [norm(c) for c in contexts]
+    context_text = "\n\n".join(
+        f"[Context {i}]\n{c}" for i, c in enumerate(contexts, start=1)
     )
+
+    user_prompt = (
+        f"Question:\n{question}\n\n"
+        f"Reference answer:\n{reference}\n\n"
+        f"Retrieved contexts:\n{context_text}\n\n"
+        "Decompose the reference into atomic factual claims. Evaluate each "
+        "claim using only the retrieved contexts, with an exact quote for "
+        "every supported claim."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=JUDGE_MODEL,
+            messages=[
+                {"role": "system", "content": ATOMIC_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        claims = json.loads(response.choices[0].message.content or "").get("claims")
+        if not isinstance(claims, list):
+            raise ValueError("Judge response has no valid 'claims' list.")
+    except Exception as exc:
+        return failed(f"{type(exc).__name__}: {exc}")
+
+    valid = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        claim_text = str(c.get("claim", "")).strip()
+        judge_supported = c.get("supported")
+        if not claim_text or not isinstance(judge_supported, bool):
+            continue
+
+        evidence = str(c.get("evidence", "")).strip()
+        verified = (
+            judge_supported
+            and bool(norm(evidence))
+            and any(norm(evidence) in ctx for ctx in normalized)
+        )
+        valid.append({
+            "claim": claim_text,
+            "supported": verified,
+            "judge_supported": judge_supported,
+            "evidence": evidence,
+            "reason": str(c.get("reason", "")).strip(),
+        })
+
+    total = len(valid)
+    supported = sum(c["supported"] for c in valid)
+
+    return {
+        "score": supported / total if total else None,
+        "supported_claims": supported,
+        "total_claims": total,
+        "claims": valid,
+        "error": None if total else "Judge returned no valid atomic claims.",
+    }
 
 
 # ==========================================================================
@@ -506,49 +335,19 @@ def build_ragas_llm():
 
 async def main(args):
 
-    # ----------------------------------------------------------------------
-    # Resolve dataset
-    # ----------------------------------------------------------------------
+    # Fail fast on bad arguments, before loading any model.
+    wanted_metrics = [m.strip() for m in args.metrics.split(",") if m.strip()]
+    unknown = set(wanted_metrics) - set(METRIC_CLASSES)
+    if unknown or not wanted_metrics:
+        raise ValueError(
+            f"Unknown metrics: {sorted(unknown)}. "
+            f"Choose from: {sorted(METRIC_CLASSES)}"
+        )
 
-    json_path = (
-        Path(args.json)
-        if args.json
-        else DEFAULT_DATASET
-    )
-
-    file_id = args.file_id
-
-    # ----------------------------------------------------------------------
-    # Header
-    # ----------------------------------------------------------------------
-
-    print("=" * 80)
-    print("RAGAS EVALUATION")
-    print("=" * 80)
-
-    print(
-        f"Evaluation file : {file_id}"
-    )
-
-    print(
-        f"Golden dataset  : {json_path}"
-    )
-
-    print(
-        f"Judge model     : {JUDGE_MODEL}"
-    )
-
-    print(
-        f"Call timeout    : "
-        f"{CALL_TIMEOUT}s | "
-        f"Job timeout: {JOB_TIMEOUT}s"
-    )
-
-    print()
-
-    # ----------------------------------------------------------------------
-    # Build RAG components
-    # ----------------------------------------------------------------------
+    json_path = Path(args.json) if args.json else DEFAULT_DATASET
+    tag = args.tag or "golden"
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     (
         nlp_controller,
@@ -559,734 +358,261 @@ async def main(args):
     ) = await build_rag_components()
 
     try:
+        file_id = await resolve_file_id(db_client, args.file_id)
 
         # ------------------------------------------------------------------
-        # Load golden questions
+        # Questions
         # ------------------------------------------------------------------
-
-        questions = load_questions_from_json(
-            json_path
-        )
-
-        print(
-            f"Golden questions loaded: "
-            f"{len(questions)}"
-        )
-
-        # ------------------------------------------------------------------
-        # Optional filters: --ids and --category
-        # ------------------------------------------------------------------
+        questions = load_questions(json_path)
+        total_loaded = len(questions)
 
         if args.ids:
-
-            wanted_ids = {
-                x.strip()
-                for x in args.ids.split(",")
-                if x.strip()
-            }
-
-            questions = [
-                q
-                for q in questions
-                if str(q["id"]) in wanted_ids
-            ]
+            wanted_ids = {x.strip() for x in args.ids.split(",") if x.strip()}
+            questions = [q for q in questions if str(q["id"]) in wanted_ids]
 
         if args.category:
-
-            questions = [
-                q
-                for q in questions
-                if q["category"] == args.category
-            ]
-
-        # ------------------------------------------------------------------
-        # Optional limit
-        # ------------------------------------------------------------------
+            questions = [q for q in questions if q["category"] == args.category]
 
         if args.limit:
-            questions = questions[
-                :args.limit
-            ]
-
-        print(
-            f"Questions to evaluate: "
-            f"{len(questions)}"
-        )
-
-        print()
+            questions = questions[:args.limit]
 
         if not questions:
-
             raise RuntimeError(
-                "No questions matched the filters "
-                "(--ids / --category / --limit). "
-                "Check the spelling of the ids or the "
-                "category name."
+                "No questions matched the filters (--ids / --category / --limit)."
             )
+
+        print("=" * 80)
+        print(f"RAGAS EVALUATION | tag={tag}")
+        print(f"File      : {file_id}")
+        print(f"Dataset   : {json_path} ({total_loaded} loaded, {len(questions)} selected)")
+        print(f"Judge     : {JUDGE_MODEL}")
+        print(f"Metrics   : {', '.join(wanted_metrics)}"
+              f"{' + atomic recall' if args.atomic else ''}")
+        print("=" * 80)
 
         # ------------------------------------------------------------------
-        # RAG rows
+        # RAG: answer every question
         # ------------------------------------------------------------------
+        rows, extras, failed_questions = [], [], []
+        checkpoint_path = RESULTS_DIR / f"checkpoint_{tag}_{stamp}.jsonl"
 
-        rows = []
-
-        extras = []
-
-        failed_questions = []
-
-        # ------------------------------------------------------------------
-        # Evaluate each question through RAG
-        # ------------------------------------------------------------------
-
-        for index, item in enumerate(
-            questions,
-            start=1,
-        ):
-
-            question = item["question"]
-
-            print("-" * 80)
-
+        for index, item in enumerate(questions, start=1):
             print(
-                f"Question "
-                f"{index}/{len(questions)}"
+                f"[{index}/{len(questions)}] {item['id']} | "
+                f"{item['category']} | {item['question']}"
             )
-
-            print(
-                f"ID: "
-                f"{item.get('id', index)}"
-            )
-
-            print(
-                f"Category: "
-                f"{item.get('category', '')}"
-            )
-
-            print(
-                f"Source section: "
-                f"{item.get('source_section', '')}"
-            )
-
-            print(
-                "Needs multiple chunks: "
-                f"{item.get('needs_multiple_chunks', False)}"
-            )
-
-            print(
-                f"Question: {question}"
-            )
-
             started = time.time()
 
             try:
-
-                # ----------------------------------------------------------
-                # RAG generation
-                # ----------------------------------------------------------
-
-                result = None
-
-                for attempt in range(
-                    1,
-                    GEN_RETRIES + 2,
-                ):
-
-                    try:
-
-                        result = await asyncio.wait_for(
-
-                            nlp_controller.answer_rag_question(
-                                project=project,
-                                query=question,
-                                limit=RETRIEVAL_LIMIT,
-                                return_contexts=True,
-                                file_id=file_id,
-                            ),
-
-                            timeout=GEN_TIMEOUT,
-                        )
-
-                        break
-
-                    except Exception as exc:
-
-                        print(
-                            f"Attempt "
-                            f"{attempt}/"
-                            f"{GEN_RETRIES + 1} "
-                            f"failed: {exc!r}"
-                        )
-
-                        if (
-                            attempt
-                            == GEN_RETRIES + 1
-                        ):
-                            raise
-
-                # ----------------------------------------------------------
-                # IMPORTANT DIAGNOSTIC
-                # ----------------------------------------------------------
-
-                print(
-                    f"RAG result type: "
-                    f"{type(result).__name__}"
+                result = await nlp_controller.answer_rag_question(
+                    project=project,
+                    query=item["question"],
+                    limit=RETRIEVAL_LIMIT,
+                    return_contexts=True,
+                    file_id=file_id,
+                    db_client=db_client,
                 )
 
-                if isinstance(result, tuple):
-
-                    print(
-                        f"RAG result length: "
-                        f"{len(result)}"
-                    )
-
-                print(
-                    f"RAG raw result: "
-                    f"{result!r}"
-                )
-
-                # ----------------------------------------------------------
-                # Validate expected project contract
-                #
-                # Current NLPController contract:
-                #
-                #     answer, _, _, contexts
-                # ----------------------------------------------------------
-
-                if not isinstance(result, tuple):
-
+                if not isinstance(result, tuple) or len(result) != 5:
                     raise RuntimeError(
-                        "Unexpected answer_rag_question "
-                        "return type. Expected tuple, "
-                        f"got {type(result).__name__}."
+                        "Unexpected answer_rag_question result: "
+                        f"{type(result).__name__}"
                     )
 
-                if len(result) < 4:
+                answer, _, _, contexts, _ = result
+                answer = str(answer).strip() if answer is not None else ""
+                contexts = normalize_contexts(contexts)
+                elapsed = time.time() - started
 
-                    raise RuntimeError(
-                        "Unexpected answer_rag_question "
-                        "return length. Expected at "
-                        f"least 4 values, got {len(result)}."
-                    )
-
-                (
-                    answer,
-                    _,
-                    _,
-                    contexts,
-                ) = result
-
-                # ----------------------------------------------------------
-                # Normalize
-                # ----------------------------------------------------------
-
-                if isinstance(answer, str):
-                    answer = answer.strip()
-                elif answer is None:
-                    answer = ""
-                else:
-                    answer = str(answer).strip()
-
-                contexts = normalize_contexts(
-                    contexts
-                )
-
-                elapsed = (
-                    time.time()
-                    - started
-                )
-
-                # ----------------------------------------------------------
-                # Validate RAG output
-                # ----------------------------------------------------------
-
-                problems = validate_rag_result(
-                    answer,
-                    contexts,
-                )
-
-                print(
-                    f"Generated answer: "
-                    f"{bool(answer)}"
-                )
-
-                print(
-                    "Answer "
-                    "(first 300 chars): "
-                    f"{answer[:300]}"
-                )
-
-                print(
-                    f"Retrieved contexts: "
-                    f"{len(contexts)}"
-                )
-
-                print(
-                    f"RAG time: "
-                    f"{elapsed:.1f}s"
-                )
-
-                # ----------------------------------------------------------
-                # DO NOT send broken RAG results to RAGAS
-                # ----------------------------------------------------------
-
+                problems = []
+                if not answer:
+                    problems.append("answer is empty")
+                if not contexts:
+                    problems.append("retrieved_contexts is empty")
                 if problems:
+                    raise RuntimeError("; ".join(problems))
 
-                    failure_reason = (
-                        "; ".join(problems)
-                    )
+                print(f"    {len(contexts)} contexts | {elapsed:.0f}s | {answer[:200]}")
 
-                    print()
-                    print(
-                        "RAG OUTPUT INVALID:"
-                    )
-                    print(
-                        f"  {failure_reason}"
-                    )
-
-                    failed_questions.append(
-                        {
-                            "id": item.get(
-                                "id",
-                                index,
-                            ),
-                            "question": question,
-                            "reason": failure_reason,
-                            "raw_result": repr(result),
-                        }
-                    )
-
-                    continue
-
-                # ----------------------------------------------------------
-                # RAGAS row
-                # ----------------------------------------------------------
-
-                ragas_row = {
-                    "user_input": question,
+                row = {
+                    "user_input": item["question"],
                     "response": answer,
                     "retrieved_contexts": contexts,
-                    "reference": item[
-                        "ground_truth"
-                    ],
+                    "reference": item["ground_truth"],
                 }
-
-                rows.append(
-                    ragas_row
-                )
-
-                # ----------------------------------------------------------
-                # Metadata
-                # ----------------------------------------------------------
-
-                extra_row = {
-                    "id": item.get(
-                        "id",
-                        index,
-                    ),
-                    "category": item.get(
-                        "category",
-                        "",
-                    ),
-                    "source_section": item.get(
-                        "source_section",
-                        "",
-                    ),
-                    "needs_multiple_chunks": item.get(
-                        "needs_multiple_chunks",
-                        False,
-                    ),
-                    "rag_seconds": round(
-                        elapsed,
-                        1,
-                    ),
+                extra = {
+                    "id": item["id"],
+                    "category": item["category"],
+                    "source_section": item["source_section"],
+                    "needs_multiple_chunks": item["needs_multiple_chunks"],
+                    "rag_seconds": round(elapsed, 1),
                 }
+                rows.append(row)
+                extras.append(extra)
 
-                extras.append(
-                    extra_row
-                )
-
-                # ----------------------------------------------------------
-                # Checkpoint
-                # ----------------------------------------------------------
-
-                RESULTS_DIR.mkdir(
-                    parents=True,
-                    exist_ok=True,
-                )
-
-                checkpoint_path = (
-                    RESULTS_DIR
-                    / "checkpoint_rows.jsonl"
-                )
-
-                with open(
-                    checkpoint_path,
-                    "a",
-                    encoding="utf-8",
-                ) as f:
-
-                    f.write(
-                        json.dumps(
-                            {
-                                **ragas_row,
-                                **extra_row,
-                            },
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
+                with open(checkpoint_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({**row, **extra}, ensure_ascii=False) + "\n")
 
             except Exception as exc:
-
-                print(
-                    f"RAG generation failed: "
-                    f"{exc!r}"
-                )
-
-                failed_questions.append(
-                    {
-                        "id": item.get(
-                            "id",
-                            index,
-                        ),
-                        "question": question,
-                        "reason": repr(exc),
-                    }
-                )
-
-        # ----------------------------------------------------------------------
-        # Summary of RAG generation
-        # ----------------------------------------------------------------------
+                print(f"    FAILED: {exc!r}")
+                failed_questions.append({
+                    "id": item["id"],
+                    "question": item["question"],
+                    "reason": repr(exc),
+                })
 
         print()
-        print("=" * 80)
-        print("RAG GENERATION SUMMARY")
-        print("=" * 80)
-
-        print(
-            f"Successful RAG rows : "
-            f"{len(rows)}/{len(questions)}"
-        )
-
-        print(
-            f"Failed RAG questions: "
-            f"{len(failed_questions)}/{len(questions)}"
-        )
-
-        if failed_questions:
-
-            print()
-            print(
-                "Failed questions:"
-            )
-
-            for failed in failed_questions:
-
-                print(
-                    f"- {failed['id']}: "
-                    f"{failed['reason']}"
-                )
-
-        # ----------------------------------------------------------------------
-        # Make sure at least one row succeeded
-        # ----------------------------------------------------------------------
+        print(f"RAG done: {len(rows)}/{len(questions)} ok, "
+              f"{len(failed_questions)} failed")
 
         if not rows:
+            raise RuntimeError("No valid RAG rows were generated. RAGAS was not started.")
 
-            raise RuntimeError(
-                "No valid RAG rows were generated. "
-                "RAGAS was not started. "
-                "Inspect the RAG raw result above."
-            )
-
-        # ----------------------------------------------------------------------
-        # Build HuggingFace Dataset
-        # ----------------------------------------------------------------------
-
-        dataset = Dataset.from_list(
-            rows
+        # ------------------------------------------------------------------
+        # RAGAS
+        # ------------------------------------------------------------------
+        judge_client = build_judge_client()
+        ragas_llm = llm_factory(
+            model=JUDGE_MODEL,
+            provider="openai",
+            client=judge_client,
+            temperature=0.0,
         )
 
-        print()
-        print("=" * 80)
-        print("RAGAS DATASET READY")
-        print("=" * 80)
-
-        print(
-            f"Rows successfully generated: "
-            f"{len(rows)}/{len(questions)}"
-        )
-
-        print()
-
-        # ----------------------------------------------------------------------
-        # Build RAGAS judge
-        # ----------------------------------------------------------------------
-
-        ragas_llm = build_ragas_llm()
-
-        # ----------------------------------------------------------------------
-        # RAGAS run configuration
-        # ----------------------------------------------------------------------
-
-        run_config = RunConfig(
-            timeout=JOB_TIMEOUT,
-            max_retries=2,
-            max_workers=1,
-        )
-
-        # ----------------------------------------------------------------------
-        # Metrics
-        # ----------------------------------------------------------------------
-
-        metrics = [
-            Faithfulness(
-                llm=ragas_llm
-            ),
-            ContextPrecision(
-                llm=ragas_llm
-            ),
-            ContextRecall(
-                llm=ragas_llm
-            ),
-        ]
-
-        # ----------------------------------------------------------------------
-        # Run RAGAS
-        # ----------------------------------------------------------------------
+        metrics = [METRIC_CLASSES[m](llm=ragas_llm) for m in wanted_metrics]
 
         print("=" * 80)
         print("STARTING RAGAS EVALUATION")
         print("=" * 80)
 
-        print()
-
         eval_started = time.time()
-
         result = evaluate(
-            dataset=dataset,
+            dataset=Dataset.from_list(rows),
             metrics=metrics,
             llm=ragas_llm,
-            run_config=run_config,
+            run_config=RunConfig(
+                timeout=JOB_TIMEOUT,
+                max_retries=2,
+                max_workers=args.workers,
+            ),
             raise_exceptions=False,
             show_progress=True,
         )
-
-        eval_minutes = (
-            time.time()
-            - eval_started
-        ) / 60
-
-        # ----------------------------------------------------------------------
-        # Print result
-        # ----------------------------------------------------------------------
+        eval_minutes = (time.time() - eval_started) / 60
 
         print()
-        print("=" * 80)
-        print("RAGAS RESULT")
-        print("=" * 80)
-
         print(result)
-
-        print(
-            f"Evaluation time: "
-            f"{eval_minutes:.1f} min"
-        )
-
-        # ----------------------------------------------------------------------
-        # Convert to DataFrame
-        # ----------------------------------------------------------------------
+        print(f"Evaluation time: {eval_minutes:.1f} min")
 
         df = result.to_pandas()
 
-        # ----------------------------------------------------------------------
-        # Attach metadata
-        # ----------------------------------------------------------------------
+        for key in ("id", "category", "source_section",
+                    "needs_multiple_chunks", "rag_seconds"):
+            df[key] = [extra[key] for extra in extras]
 
-        for key in (
-            "id",
-            "category",
-            "source_section",
-            "needs_multiple_chunks",
-            "rag_seconds",
-        ):
+        # ------------------------------------------------------------------
+        # Optional: atomic context recall (slow, extra judge call per question)
+        # ------------------------------------------------------------------
+        atomic_results = []
 
-            df[key] = [
-                extra[key]
-                for extra in extras
+        if args.atomic:
+            print()
+            print("ATOMIC CONTEXT RECALL")
+
+            for index, row in enumerate(rows, start=1):
+                atomic = atomic_context_recall(
+                    client=judge_client,
+                    question=row["user_input"],
+                    reference=row["reference"],
+                    contexts=row["retrieved_contexts"],
+                )
+                atomic_results.append(atomic)
+
+                if atomic["score"] is None:
+                    print(f"[{index}/{len(rows)}] unavailable: {atomic['error']}")
+                else:
+                    print(
+                        f"[{index}/{len(rows)}] {atomic['score']:.4f} "
+                        f"({atomic['supported_claims']}/{atomic['total_claims']} claims)"
+                    )
+
+            df["atomic_context_recall"] = [a["score"] for a in atomic_results]
+            df["atomic_supported_claims"] = [a["supported_claims"] for a in atomic_results]
+            df["atomic_total_claims"] = [a["total_claims"] for a in atomic_results]
+            df["atomic_claim_details"] = [
+                json.dumps(a["claims"], ensure_ascii=False) for a in atomic_results
             ]
+            df["atomic_recall_error"] = [a["error"] or "" for a in atomic_results]
 
-        # ----------------------------------------------------------------------
-        # Score columns
-        # ----------------------------------------------------------------------
-
+        # ------------------------------------------------------------------
+        # Report
+        # ------------------------------------------------------------------
         score_cols = [
-            column
-            for column in (
-                "faithfulness",
-                "context_precision",
-                "context_recall",
-            )
-            if column in df.columns
+            c for c in (*wanted_metrics, "atomic_context_recall")
+            if c in df.columns
         ]
-
-        # ----------------------------------------------------------------------
-        # Per-question scores
-        # ----------------------------------------------------------------------
 
         print()
         print("Per-question scores:")
+        print(df[["id", "category"] + score_cols].to_string(index=False))
 
-        print(
-            df[
-                ["id", "category"]
-                + score_cols
-            ].to_string(
-                index=False
-            )
-        )
-
-        # ----------------------------------------------------------------------
-        # Average per category
-        # ----------------------------------------------------------------------
-
-        if score_cols and df["category"].nunique() > 1:
-
+        if df["category"].nunique() > 1:
             print()
             print("Average per category:")
-
-            print(
-                df.groupby("category")[score_cols]
-                .mean()
-                .round(3)
-                .to_string()
-            )
-
-        # ----------------------------------------------------------------------
-        # NaN check
-        # ----------------------------------------------------------------------
-
-        nan_counts = (
-            df[score_cols]
-            .isna()
-            .sum()
-        )
+            print(df.groupby("category")[score_cols].mean().round(3).to_string())
 
         print()
-        print(
-            "NaN per metric "
-            "(failed/timed-out jobs):"
-        )
+        print("Overall average:")
+        print(df[score_cols].mean().round(4).to_string())
 
-        print(
-            nan_counts.to_string()
-        )
-
+        nan_counts = df[score_cols].isna().sum()
+        print()
+        print("NaN per metric (failed/timed-out jobs):")
+        print(nan_counts.to_string())
         if nan_counts.sum() > 0:
-
             print(
-                "WARNING: some RAGAS jobs failed. "
-                "Do not trust the corresponding "
-                "metric average until NaN = 0."
+                "WARNING: some RAGAS jobs failed. Do not trust the "
+                "corresponding averages until NaN = 0."
             )
 
-        # ----------------------------------------------------------------------
-        # Save results
-        # ----------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Save
+        # ------------------------------------------------------------------
+        base = RESULTS_DIR / f"ragas_{tag}_{stamp}"
 
-        RESULTS_DIR.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        df.to_csv(f"{base}.csv", index=False, encoding="utf-8-sig")
 
-        stamp = datetime.now().strftime(
-            "%Y%m%d_%H%M%S"
-        )
+        with open(f"{base}_rows.json", "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2)
 
-        tag = (
-            args.tag
-            or "golden"
-        )
-
-        csv_out = (
-            RESULTS_DIR
-            / f"ragas_{tag}_{stamp}.csv"
-        )
-
-        json_out = (
-            RESULTS_DIR
-            / f"ragas_{tag}_{stamp}_rows.json"
-        )
-
-        failed_out = (
-            RESULTS_DIR
-            / f"ragas_{tag}_{stamp}_failed.json"
-        )
-
-        # ----------------------------------------------------------------------
-        # Save scores
-        # ----------------------------------------------------------------------
-
-        df.to_csv(
-            csv_out,
-            index=False,
-            encoding="utf-8-sig",
-        )
-
-        # ----------------------------------------------------------------------
-        # Save RAGAS input rows
-        # ----------------------------------------------------------------------
-
-        with open(
-            json_out,
-            "w",
-            encoding="utf-8",
-        ) as f:
-
-            json.dump(
-                rows,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-
-        # ----------------------------------------------------------------------
-        # Save failed RAG questions
-        # ----------------------------------------------------------------------
-
-        with open(
-            failed_out,
-            "w",
-            encoding="utf-8",
-        ) as f:
-
-            json.dump(
-                failed_questions,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+        with open(f"{base}_failed.json", "w", encoding="utf-8") as f:
+            json.dump(failed_questions, f, ensure_ascii=False, indent=2)
 
         print()
-        print(
-            f"Saved scores : "
-            f"{csv_out}"
-        )
+        print(f"Saved scores : {base}.csv")
+        print(f"Saved rows   : {base}_rows.json")
+        print(f"Saved failed : {base}_failed.json")
 
-        print(
-            f"Saved rows   : "
-            f"{json_out}"
-        )
-
-        print(
-            f"Saved failed : "
-            f"{failed_out}"
-        )
+        if atomic_results:
+            with open(f"{base}_atomic_claims.json", "w", encoding="utf-8") as f:
+                json.dump(
+                    [
+                        {
+                            "id": extra["id"],
+                            "question": row["user_input"],
+                            "reference": row["reference"],
+                            **atomic,
+                        }
+                        for row, extra, atomic in zip(rows, extras, atomic_results)
+                    ],
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            print(f"Saved atomic : {base}_atomic_claims.json")
 
     finally:
-
         await vectordb_client.disconnect()
-
         await db_engine.dispose()
 
 
@@ -1295,80 +621,29 @@ async def main(args):
 # ==========================================================================
 
 def parse_args():
-
     parser = argparse.ArgumentParser(
-        description=(
-            "RAGAS evaluation for mini-rag "
-            "using the 42-question golden dataset."
-        )
+        description="RAGAS evaluation for mini-rag using the golden dataset."
     )
-
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=0,
-        help=(
-            "Evaluate only the first N "
-            "questions. 0 = all."
-        ),
-    )
-
-    parser.add_argument(
-        "--file-id",
-        default=DEFAULT_FILE_ID,
-        help=(
-            "file_id of the indexed PDF "
-            "to query."
-        ),
-    )
-
-    parser.add_argument(
-        "--json",
-        default="",
-        help=(
-            "Path to the RAG golden dataset JSON. "
-            "Defaults to "
-            "evaluation/datasets/rag_golden_questions_42.json"
-        ),
-    )
-
-    parser.add_argument(
-        "--tag",
-        default="",
-        help=(
-            "Label for this evaluation run."
-        ),
-    )
-
-    parser.add_argument(
-        "--ids",
-        default="",
-        help=(
-            "Comma-separated question ids to "
-            "evaluate, e.g. Q04,Q13,Q19."
-        ),
-    )
-
-    parser.add_argument(
-        "--category",
-        default="",
-        help=(
-            "Evaluate only one category, "
-            "e.g. Factual or \"Multi-hop\"."
-        ),
-    )
-
+    parser.add_argument("--limit", type=int, default=0,
+                        help="Evaluate only the first N questions. 0 = all.")
+    parser.add_argument("--file-id", default="",
+                        help="Internal file_id of the indexed PDF (auto-resolved if omitted).")
+    parser.add_argument("--json", default="",
+                        help="Path to the golden dataset JSON.")
+    parser.add_argument("--tag", default="", help="Label for this run.")
+    parser.add_argument("--ids", default="",
+                        help="Comma-separated question ids, e.g. Q04,Q13,Q19.")
+    parser.add_argument("--category", default="",
+                        help='Only one category, e.g. Factual or "Multi-hop".')
+    parser.add_argument("--metrics",
+                        default="faithfulness,context_precision,context_recall",
+                        help="Comma-separated RAGAS metrics to run.")
+    parser.add_argument("--atomic", action="store_true",
+                        help="Also run the slow atomic context recall diagnostic.")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Parallel RAGAS jobs (keep 1 on CPU-only Ollama).")
     return parser.parse_args()
 
 
-# ==========================================================================
-# Entry point
-# ==========================================================================
-
 if __name__ == "__main__":
-
-    asyncio.run(
-        main(
-            parse_args()
-        )
-    )
+    asyncio.run(main(parse_args()))

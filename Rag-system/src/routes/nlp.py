@@ -150,7 +150,6 @@ async def search_index(request: Request, project_id: int, search_request: Search
     project=project,
     text=search_request.text,
     limit=search_request.limit,
-    file_id=search_request.file_id,
         )
 
     if not results:
@@ -193,11 +192,14 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
 
     )
 
-    answer, full_prompt, chat_history = await nlp_controller.answer_rag_question(
+    answer, full_prompt, chat_history, _contexts, sources = (
+    await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=search_request.limit,
+        return_contexts=True,
     )
+)
 
     if not answer:
         return JSONResponse(
@@ -208,13 +210,14 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         )
     
     return JSONResponse(
-        content={
-            "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-            "answer": answer,
-            "full_prompt": full_prompt,
-            "chat_history": chat_history
-        }
-    )
+    content={
+        "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
+        "answer": answer,
+        "sources": sources,
+        "full_prompt": full_prompt,
+        "chat_history": chat_history
+    }
+)
 
 @nlp_router.post("/index/multimodal-answer/{project_id}")
 async def answer_multimodal_rag(
