@@ -1,8 +1,11 @@
-from fastapi import FastAPI
-from routes import base, data, nlp, sql,video,knowledge,router
+from fastapi import Depends, FastAPI
+from routes import base, data, nlp, sql,video,knowledge,router,databases
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
+from auth.config import get_auth_settings
+from auth.dependencies import get_current_user
+from auth.routes import auth_router
 
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
@@ -59,10 +62,16 @@ async def shutdown_span():
 app.on_event("startup")(startup_span)
 app.on_event("shutdown")(shutdown_span)
 
-app.include_router(base.base_router)
-app.include_router(data.data_router)
-app.include_router(nlp.nlp_router)
-app.include_router(sql.sql_router)
-app.include_router(video.video_router)
-app.include_router(knowledge.knowledge_router)
-app.include_router(router.router_router)
+# ---- authentication / authorization ----
+# AUTH_ENABLED=false in .env opens every route again (development only).
+_protected = [Depends(get_current_user)] if get_auth_settings().AUTH_ENABLED else []
+
+app.include_router(base.base_router)                       # public
+app.include_router(auth_router)                            # public: register, login, codes, reset
+app.include_router(data.data_router, dependencies=_protected)
+app.include_router(nlp.nlp_router, dependencies=_protected)
+app.include_router(sql.sql_router, dependencies=_protected)
+app.include_router(video.video_router, dependencies=_protected)
+app.include_router(knowledge.knowledge_router, dependencies=_protected)
+app.include_router(router.router_router, dependencies=_protected)
+app.include_router(databases.databases_router, dependencies=_protected)
