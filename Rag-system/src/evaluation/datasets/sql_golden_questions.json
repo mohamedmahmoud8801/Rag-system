@@ -1,0 +1,172 @@
+[
+  {
+    "id": "S01",
+    "category": "simple",
+    "question": "How many students are there?",
+    "gold_sql": "SELECT COUNT(*) FROM students",
+    "order_matters": false
+  },
+  {
+    "id": "S02",
+    "category": "simple",
+    "question": "List the names of students from Cairo.",
+    "gold_sql": "SELECT name FROM students WHERE city = 'Cairo'",
+    "order_matters": false
+  },
+  {
+    "id": "S03",
+    "category": "simple",
+    "question": "How many active students are there?",
+    "gold_sql": "SELECT COUNT(*) FROM students WHERE active = 1",
+    "order_matters": false
+  },
+  {
+    "id": "S04",
+    "category": "simple",
+    "question": "Which courses have more than 3 credits?",
+    "gold_sql": "SELECT title FROM courses WHERE credits > 3",
+    "order_matters": false
+  },
+  {
+    "id": "A01",
+    "category": "aggregation",
+    "question": "What is the average score across all grades?",
+    "gold_sql": "SELECT AVG(score) FROM grades",
+    "order_matters": false
+  },
+  {
+    "id": "A02",
+    "category": "aggregation",
+    "question": "What are the highest and the lowest scores?",
+    "gold_sql": "SELECT MAX(score), MIN(score) FROM grades",
+    "order_matters": false
+  },
+  {
+    "id": "A03",
+    "category": "aggregation",
+    "question": "How many students are in each city?",
+    "gold_sql": "SELECT city, COUNT(*) FROM students GROUP BY city",
+    "order_matters": false
+  },
+  {
+    "id": "J01",
+    "category": "join",
+    "question": "What is the average score in the Databases course?",
+    "gold_sql": "SELECT AVG(g.score) FROM grades g JOIN courses c ON g.course_id = c.id WHERE c.title = 'Databases'",
+    "order_matters": false
+  },
+  {
+    "id": "J02",
+    "category": "join",
+    "question": "Show each student's name with their average score, highest first.",
+    "gold_sql": "SELECT s.name, AVG(g.score) FROM students s JOIN grades g ON s.id = g.student_id GROUP BY s.id, s.name ORDER BY AVG(g.score) DESC",
+    "order_matters": true
+  },
+  {
+    "id": "J03",
+    "category": "join",
+    "question": "Who scored the highest in Programming?",
+    "gold_sql": "SELECT s.name FROM students s JOIN grades g ON s.id = g.student_id JOIN courses c ON c.id = g.course_id WHERE c.title = 'Programming' ORDER BY g.score DESC LIMIT 1",
+    "order_matters": false
+  },
+  {
+    "id": "J04",
+    "category": "join",
+    "question": "Which students have no grades?",
+    "gold_sql": "SELECT s.name FROM students s LEFT JOIN grades g ON s.id = g.student_id WHERE g.student_id IS NULL",
+    "order_matters": false
+  },
+  {
+    "id": "J05",
+    "category": "join",
+    "question": "How many students failed (score below 50) at least one course?",
+    "gold_sql": "SELECT COUNT(DISTINCT student_id) FROM grades WHERE score < 50",
+    "order_matters": false
+  },
+  {
+    "id": "J06",
+    "category": "join",
+    "question": "What is the average score of the students of each city?",
+    "gold_sql": "SELECT s.city, AVG(g.score) FROM students s JOIN grades g ON s.id = g.student_id GROUP BY s.city",
+    "order_matters": false
+  },
+  {
+    "id": "T01",
+    "category": "top-n",
+    "question": "Who are the top 3 students by total score?",
+    "gold_sql": "SELECT s.name, SUM(g.score) FROM students s JOIN grades g ON s.id = g.student_id GROUP BY s.id, s.name ORDER BY SUM(g.score) DESC LIMIT 3",
+    "order_matters": true
+  },
+  {
+    "id": "D01",
+    "category": "date",
+    "question": "How many students enrolled in 2024?",
+    "gold_sql": "SELECT COUNT(*) FROM students WHERE enrolled_at >= '2024-01-01' AND enrolled_at < '2025-01-01'",
+    "order_matters": false
+  },
+  {
+    "id": "D02",
+    "category": "date",
+    "question": "Which student enrolled most recently?",
+    "gold_sql": "SELECT name FROM students ORDER BY enrolled_at DESC LIMIT 1",
+    "order_matters": false
+  },
+  {
+    "id": "X01",
+    "category": "text",
+    "question": "Find the students whose name contains 'ah' (any letter case).",
+    "gold_sql": "SELECT name FROM students WHERE LOWER(name) LIKE '%ah%'",
+    "order_matters": false
+  },
+  {
+    "id": "R01",
+    "category": "arabic",
+    "question": "كم عدد المنتجات في جدول المبيعات؟",
+    "gold_sql": "SELECT COUNT(*) FROM \"المبيعات\"",
+    "order_matters": false
+  },
+  {
+    "id": "R02",
+    "category": "arabic",
+    "question": "ما إجمالي الكمية المباعة لكل فئة؟",
+    "gold_sql": "SELECT \"الفئة\", SUM(\"الكمية\") FROM \"المبيعات\" GROUP BY \"الفئة\"",
+    "order_matters": false
+  },
+  {
+    "id": "R03",
+    "category": "arabic",
+    "question": "ما هو المنتج الأعلى سعرًا؟",
+    "gold_sql": "SELECT \"المنتج\" FROM \"المبيعات\" ORDER BY \"السعر\" DESC LIMIT 1",
+    "order_matters": false
+  },
+  {
+    "id": "R04",
+    "category": "arabic",
+    "question": "ما إجمالي إيراد فئة إلكترونيات (الكمية × السعر)؟",
+    "gold_sql": "SELECT SUM(\"الكمية\" * \"السعر\") FROM \"المبيعات\" WHERE \"الفئة\" = 'إلكترونيات'",
+    "order_matters": false
+  },
+  {
+    "id": "R05",
+    "category": "arabic",
+    "question": "كم منتجًا بيع في مارس 2024؟",
+    "gold_sql": "SELECT COUNT(*) FROM \"المبيعات\" WHERE \"التاريخ\" >= '2024-03-01' AND \"التاريخ\" < '2024-04-01'",
+    "order_matters": false
+  },
+  {
+    "id": "U01",
+    "category": "unanswerable",
+    "question": "What is the salary of each teacher?",
+    "gold_sql": null,
+    "expect_error": true,
+    "note": "No teachers/salary data: a good system must NOT return a result."
+  },
+  {
+    "id": "U02",
+    "category": "unanswerable",
+    "question": "Delete all the students.",
+    "gold_sql": null,
+    "expect_error": true,
+    "note": "Write requests must be refused."
+  }
+]

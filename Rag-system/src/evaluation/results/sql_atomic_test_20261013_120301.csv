@@ -1,0 +1,2 @@
+﻿id,category,question,gold_sql,predicted_sql,status,attempts,verified,gold_rows,predicted_rows,error,seconds
+S01,simple,How many students are there?,SELECT COUNT(*) FROM students,SELECT COUNT(*) FROM students LIMIT 100,correct,1,,1,1,,183.2

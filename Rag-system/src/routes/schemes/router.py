@@ -27,8 +27,9 @@ class RouterQueryRequest(BaseModel):
     )
 
     # Used only when intent = SQL
+    # Both optional: the server database is used when omitted.
     database_url: Optional[str] = None
-    provider: str = "sqlite"
+    provider: Optional[str] = None
 
     max_rows: int = Field(
         default=100,

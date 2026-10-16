@@ -1,1122 +1,353 @@
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional
+
+import sqlglot
+from sqlglot import exp
+from sqlglot.errors import OptimizeError, SqlglotError
+from sqlglot.optimizer.qualify import qualify
 
 
 class SQLValidationError(ValueError):
-    """Raised when generated SQL fails validation."""
+    pass
 
 
 class SQLValidator:
+    """
+    Validates SQL produced by the LLM using a real SQL parser (sqlglot)
+    instead of regular expressions.
 
-    FORBIDDEN_KEYWORDS = {
-        "INSERT",
-        "UPDATE",
-        "DELETE",
-        "DROP",
-        "ALTER",
-        "CREATE",
-        "TRUNCATE",
-        "REPLACE",
-        "MERGE",
-        "GRANT",
-        "REVOKE",
+    validate() returns the SQL to execute: a single read-only statement
+    whose tables, columns and functions were checked and whose row count
+    is capped at max_rows. It raises SQLValidationError with a message
+    meant to be fed back to the LLM for correction.
+    """
+
+    MAX_QUERY_LENGTH = 8000
+
+    DIALECTS = {
+        "sqlite": "sqlite",
+        "postgresql": "postgres",
+        "postgres": "postgres",
     }
 
-    SQL_KEYWORDS = {
-        "ON",
-        "WHERE",
-        "JOIN",
-        "INNER",
-        "LEFT",
-        "RIGHT",
-        "FULL",
-        "OUTER",
-        "CROSS",
-        "GROUP",
-        "ORDER",
-        "LIMIT",
-        "HAVING",
-        "UNION",
-        "OFFSET",
+    # Any of these anywhere in the statement (even nested in a CTE).
+    FORBIDDEN_NODES = (
+        "Insert", "Update", "Delete", "Drop", "Alter", "AlterTable",
+        "Create", "Command", "Merge", "TruncateTable", "Pragma", "Set",
+        "Use", "Attach", "Detach", "Copy", "Transaction", "Commit",
+        "Rollback", "LoadData", "Into", "Lock", "Analyze", "Describe",
+        "Show", "Kill", "Grant", "Revoke",
+    )
+
+    # Known sqlglot functions that can be abused (resource exhaustion /
+    # reading files).
+    BLOCKED_FUNCTION_NODES = ("GenerateSeries", "ReadCSV", "Sleep")
+
+    # Functions sqlglot does not model itself ("anonymous") are only
+    # accepted if listed here. This blocks pg_sleep, pg_read_file,
+    # load_extension, lo_import, readfile, ...
+    ALLOWED_ANONYMOUS_FUNCTIONS = {
+        # strings
+        "lower", "upper", "trim", "ltrim", "rtrim", "length", "char_length",
+        "substr", "substring", "replace", "instr", "position", "strpos",
+        "concat", "concat_ws", "left", "right", "lpad", "rpad", "reverse",
+        "initcap", "split_part", "printf", "format", "regexp_replace",
+        "regexp_like", "translate", "unicode", "hex",
+        # numbers
+        "abs", "round", "ceil", "ceiling", "floor", "sqrt", "power", "pow",
+        "mod", "sign", "exp", "ln", "log", "log10", "trunc", "random",
+        # null handling / conditionals
+        "coalesce", "ifnull", "nullif", "iif", "greatest", "least",
+        # aggregates / windows
+        "count", "sum", "avg", "min", "max", "total", "group_concat",
+        "string_agg", "row_number", "rank", "dense_rank", "ntile", "lag",
+        "lead", "first_value", "last_value", "nth_value", "percent_rank",
+        "cume_dist", "median", "stddev", "variance",
+        # dates
+        "date", "time", "datetime", "julianday", "strftime", "unixepoch",
+        "now", "current_date", "current_time", "current_timestamp",
+        "date_trunc", "date_part", "to_char", "to_date", "age", "extract",
+        "date_diff", "datediff", "dateadd",
+        # misc
+        "typeof", "cast", "json_extract", "json_object", "json_array",
     }
 
-    # ============================================================
-    # Main Validation Pipeline
-    # ============================================================
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def validate(
         self,
         query: str,
         schema: Dict[str, Any],
         max_rows: int = 100,
+        dialect: Optional[str] = None,
     ) -> str:
 
-        if not query or not query.strip():
+        dialect = self.DIALECTS.get((dialect or "").lower())
+
+        sql = self._clean_query(query)
+
+        root = self._parse(sql, dialect)
+
+        self._validate_root_is_select(root)
+        self._validate_forbidden_nodes(root)
+        self._validate_no_recursion(root)
+        self._validate_functions(root)
+        self._validate_joins(root)
+        self._validate_tables(root, schema)
+        self._validate_columns(root, schema, dialect)
+
+        root = self._apply_limit(root, max_rows)
+
+        return root.sql(dialect=dialect, comments=False)
+
+    # ------------------------------------------------------------------
+    # Parsing
+    # ------------------------------------------------------------------
+
+    def _clean_query(self, query: str) -> str:
+
+        if not query or not str(query).strip():
+            raise SQLValidationError("SQL query is empty.")
+
+        sql = str(query).strip()
+
+        if sql.startswith("```"):
+            sql = re.sub(r"^```[a-zA-Z]*", "", sql).strip()
+            sql = sql.removesuffix("```").strip()
+
+        if len(sql) > self.MAX_QUERY_LENGTH:
             raise SQLValidationError(
-                "Generated SQL is empty."
+                f"SQL query is too long (max {self.MAX_QUERY_LENGTH} characters)."
             )
 
-        query = self._clean_query(query)
+        return sql
 
-        # --------------------------------------------------------
-        # 1. Single statement
-        # --------------------------------------------------------
+    def _parse(self, sql: str, dialect: Optional[str]) -> exp.Expression:
 
-        self._validate_single_statement(query)
-
-        # --------------------------------------------------------
-        # 2. SELECT only
-        # --------------------------------------------------------
-
-        self._validate_select_only(query)
-
-        # --------------------------------------------------------
-        # 3. Forbidden operations
-        # --------------------------------------------------------
-
-        self._validate_forbidden_keywords(query)
-
-        # --------------------------------------------------------
-        # 4. Extract tables and aliases
-        # --------------------------------------------------------
-
-        tables = self._extract_tables(query)
-
-        # --------------------------------------------------------
-        # 5. Validate tables
-        # --------------------------------------------------------
-
-        self._validate_tables(
-            tables=tables,
-            schema=schema,
-        )
-
-        # --------------------------------------------------------
-        # 6. Extract and validate columns
-        # --------------------------------------------------------
-
-        columns = self._extract_columns(query)
-
-        self._validate_columns(
-            columns=columns,
-            tables=tables,
-            schema=schema,
-        )
-
-        # --------------------------------------------------------
-        # 7. Validate JOIN relationships
-        # --------------------------------------------------------
-
-        self._validate_join_relationships(
-            query=query,
-            tables=tables,
-            schema=schema,
-        )
-
-        # --------------------------------------------------------
-        # 8. Apply LIMIT
-        # --------------------------------------------------------
-
-        query = self._apply_limit(
-            query=query,
-            max_rows=max_rows,
-        )
-
-        return query
-
-    # ============================================================
-    # Clean Query
-    # ============================================================
-
-    @staticmethod
-    def _clean_query(
-        query: str,
-    ) -> str:
-
-        query = query.strip()
-
-        if query.startswith("```sql"):
-            query = query[6:]
-
-        elif query.startswith("```"):
-            query = query[3:]
-
-        if query.endswith("```"):
-            query = query[:-3]
-
-        return query.strip().rstrip(";").strip()
-
-    # ============================================================
-    # Single Statement
-    # ============================================================
-
-    @staticmethod
-    def _validate_single_statement(
-        query: str,
-    ) -> None:
-
-        if ";" in query:
+        try:
+            statements = sqlglot.parse(sql, read=dialect)
+        except SqlglotError as exc:
             raise SQLValidationError(
-                "Multiple SQL statements are not allowed."
+                f"Invalid SQL syntax: {str(exc).splitlines()[0]}"
             )
 
-    # ============================================================
-    # SELECT Only
-    # ============================================================
+        statements = [s for s in statements if s is not None]
 
-    @classmethod
-    def _validate_select_only(
-        cls,
-        query: str,
-    ) -> None:
+        if not statements:
+            raise SQLValidationError("SQL query is empty.")
 
-        normalized = query.strip().upper()
+        if len(statements) > 1:
+            raise SQLValidationError(
+                "Only a single SQL statement is allowed."
+            )
 
-        if not normalized.startswith("SELECT"):
+        root = statements[0]
+
+        # (SELECT ...) -> SELECT ...
+        while isinstance(root, exp.Subquery) and not root.args.get("alias"):
+            root = root.this
+
+        return root
+
+    # ------------------------------------------------------------------
+    # Structural checks
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _node_classes(names) -> tuple:
+        return tuple(
+            getattr(exp, name) for name in names if hasattr(exp, name)
+        )
+
+    def _validate_root_is_select(self, root: exp.Expression) -> None:
+
+        allowed = (exp.Select,) + self._node_classes(
+            ("SetOperation", "Union", "Intersect", "Except")
+        )
+
+        if not isinstance(root, allowed):
             raise SQLValidationError(
                 "Only SELECT queries are allowed."
             )
 
-    # ============================================================
-    # Forbidden Keywords
-    # ============================================================
+    def _validate_forbidden_nodes(self, root: exp.Expression) -> None:
 
-    @classmethod
-    def _validate_forbidden_keywords(
-        cls,
-        query: str,
-    ) -> None:
+        forbidden = self._node_classes(self.FORBIDDEN_NODES)
 
-        normalized = query.upper()
+        found = root.find(*forbidden)
 
-        for keyword in cls.FORBIDDEN_KEYWORDS:
+        if found is not None:
+            raise SQLValidationError(
+                f"Forbidden SQL operation: {type(found).__name__.upper()}."
+            )
 
-            pattern = rf"\b{re.escape(keyword)}\b"
+        if root.args.get("fetch"):
+            raise SQLValidationError(
+                "Use LIMIT instead of FETCH FIRST."
+            )
 
-            if re.search(
-                pattern,
-                normalized,
-            ):
+    @staticmethod
+    def _validate_no_recursion(root: exp.Expression) -> None:
+
+        for with_node in root.find_all(exp.With):
+            if with_node.args.get("recursive"):
                 raise SQLValidationError(
-                    f"Forbidden SQL operation detected: {keyword}"
+                    "Recursive queries (WITH RECURSIVE) are not allowed."
                 )
 
-    # ============================================================
-    # Extract Tables and Aliases
-    # ============================================================
+    def _validate_functions(self, root: exp.Expression) -> None:
 
-    @classmethod
-    def _extract_tables(
-        cls,
-        query: str,
-    ) -> Dict[str, str]:
+        blocked = self._node_classes(self.BLOCKED_FUNCTION_NODES)
 
-        """
-        Extract tables and aliases from FROM / JOIN clauses.
+        for node in root.find_all(exp.Func):
 
-        Examples:
-
-            FROM customers
-
-        becomes:
-
-            {
-                "customers": "customers"
-            }
-
-        --------------------------------------------------------
-
-            FROM customers c
-
-        becomes:
-
-            {
-                "customers": "customers",
-                "c": "customers"
-            }
-
-        --------------------------------------------------------
-
-            FROM customers AS c
-
-        becomes:
-
-            {
-                "customers": "customers",
-                "c": "customers"
-            }
-        """
-
-        tables: Dict[str, str] = {}
-
-        # --------------------------------------------------------
-        # Match FROM / JOIN + table name
-        # --------------------------------------------------------
-
-        table_pattern = re.compile(
-            r"""
-            \b
-            (?:FROM|JOIN)
-            \s+
-            (?P<table>
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            """,
-            re.IGNORECASE | re.VERBOSE,
-        )
-
-        matches = list(
-            table_pattern.finditer(query)
-        )
-
-        for index, match in enumerate(matches):
-
-            table_name = match.group("table")
-
-            # Always register actual table
-            tables[table_name] = table_name
-
-            # ----------------------------------------------------
-            # Determine where this table declaration ends
-            # ----------------------------------------------------
-
-            current_end = match.end()
-
-            if index + 1 < len(matches):
-
-                next_start = matches[index + 1].start()
-
-                declaration = query[
-                    current_end:next_start
-                ]
-
-            else:
-
-                declaration = query[
-                    current_end:
-                ]
-
-            # ----------------------------------------------------
-            # Remove ON / WHERE / GROUP / ORDER etc.
-            # ----------------------------------------------------
-
-            stop_pattern = re.compile(
-                r"""
-                \b
-                (?:
-                    ON
-                    |WHERE
-                    |GROUP
-                    |ORDER
-                    |HAVING
-                    |LIMIT
-                    |OFFSET
-                    |UNION
-                )
-                \b
-                """,
-                re.IGNORECASE | re.VERBOSE,
-            )
-
-            stop_match = stop_pattern.search(
-                declaration
-            )
-
-            if stop_match:
-
-                declaration = declaration[
-                    :stop_match.start()
-                ]
-
-            # ----------------------------------------------------
-            # Check AS alias
-            # ----------------------------------------------------
-
-            as_match = re.match(
-                r"""
-                \s+
-                AS
-                \s+
-                (?P<alias>
-                    [A-Za-z_][A-Za-z0-9_]*
-                )
-                """,
-                declaration,
-                re.IGNORECASE | re.VERBOSE,
-            )
-
-            if as_match:
-
-                alias = as_match.group("alias")
-
-                if alias.upper() not in cls.SQL_KEYWORDS:
-
-                    tables[alias] = table_name
-
-                continue
-
-            # ----------------------------------------------------
-            # Check implicit alias
-            # ----------------------------------------------------
-
-            implicit_match = re.match(
-                r"""
-                \s+
-                (?P<alias>
-                    [A-Za-z_][A-Za-z0-9_]*
-                )
-                """,
-                declaration,
-                re.IGNORECASE | re.VERBOSE,
-            )
-
-            if implicit_match:
-
-                alias = implicit_match.group("alias")
-
-                if alias.upper() not in cls.SQL_KEYWORDS:
-
-                    tables[alias] = table_name
-
-        return tables
-
-    # ============================================================
-    # Validate Tables
-    # ============================================================
-
-    @staticmethod
-    def _validate_tables(
-        tables: Dict[str, str],
-        schema: Dict[str, Any],
-    ) -> None:
-
-        available_tables = set(
-            schema.keys()
-        )
-
-        for alias, table_name in tables.items():
-
-            if table_name not in available_tables:
-
+            if blocked and isinstance(node, blocked):
                 raise SQLValidationError(
-                    f"Unknown table: {table_name}"
+                    f"Function is not allowed: {type(node).__name__}."
                 )
 
-    # ============================================================
-    # Extract Qualified Columns
-    # ============================================================
+            if type(node).__name__.startswith("Anonymous"):
 
-        # ============================================================
-    # Extract Columns
-    # ============================================================
+                name = str(node.name or "").lower()
 
+                if name not in self.ALLOWED_ANONYMOUS_FUNCTIONS:
+                    raise SQLValidationError(
+                        f"Function is not allowed: {name}."
+                    )
 
     @staticmethod
-    def _extract_columns(
-        query: str,
-    ) -> List[str]:
-        """
-        Extract column references from SQL.
+    def _validate_joins(root: exp.Expression) -> None:
 
-        Supports:
-            SELECT name FROM customers
+        for join in root.find_all(exp.Join):
 
-        and:
-            SELECT c.name
-            FROM customers c
-
-        Qualified columns are returned as:
-            c.name
-
-        Unqualified columns are returned as:
-            name
-
-        SELECT aliases are ignored.
-
-        Example:
-            SELECT AVG(score) AS avg_score
-            FROM results
-
-        Extracted column:
-            score
-
-        Ignored:
-            avg_score
-        """
-
-        columns: List[str] = []
-
-        # --------------------------------------------------------
-        # Remove SQL string literals
-        #
-        # Example:
-        #
-        # WHERE name = 'customer_name'
-        #
-        # We do not want "customer_name" to be treated
-        # as a column.
-        # --------------------------------------------------------
-
-        query_without_strings = re.sub(
-            r"'(?:''|[^'])*'",
-            "",
-            query,
-        )
-
-        # --------------------------------------------------------
-        # Qualified columns
-        #
-        # c.name
-        # customers.name
-        # --------------------------------------------------------
-
-        qualified_matches = re.findall(
-            r"""
-            \b
-            (
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            \.
-            (
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            \b
-            """,
-            query_without_strings,
-            re.IGNORECASE | re.VERBOSE,
-        )
-
-        for alias, column in qualified_matches:
-            columns.append(
-                f"{alias}.{column}"
+            has_condition = bool(
+                join.args.get("on") or join.args.get("using")
             )
 
-        # --------------------------------------------------------
-        # Remove qualified references from the query
-        #
-        # Otherwise "c.name" would also produce "name".
-        # --------------------------------------------------------
+            is_natural = str(join.args.get("method") or "").upper() == "NATURAL"
 
-        query_without_qualified = re.sub(
-            r"""
-            \b
-            [A-Za-z_][A-Za-z0-9_]*
-            \.
-            [A-Za-z_][A-Za-z0-9_]*
-            \b
-            """,
-            "",
-            query_without_strings,
-            flags=re.IGNORECASE | re.VERBOSE,
-        )
-
-        # --------------------------------------------------------
-        # SQL keywords / clauses that are NOT columns
-        # --------------------------------------------------------
-
-        ignored_keywords = {
-            "SELECT",
-            "FROM",
-            "JOIN",
-            "INNER",
-            "LEFT",
-            "RIGHT",
-            "FULL",
-            "OUTER",
-            "CROSS",
-            "ON",
-            "WHERE",
-            "AND",
-            "OR",
-            "NOT",
-            "NULL",
-            "IS",
-            "IN",
-            "LIKE",
-            "BETWEEN",
-            "AS",
-            "GROUP",
-            "BY",
-            "ORDER",
-            "ASC",
-            "DESC",
-            "HAVING",
-            "LIMIT",
-            "OFFSET",
-            "UNION",
-            "ALL",
-            "DISTINCT",
-            "CASE",
-            "WHEN",
-            "THEN",
-            "ELSE",
-            "END",
-            "COUNT",
-            "SUM",
-            "AVG",
-            "MIN",
-            "MAX",
-            "CAST",
-            "COALESCE",
-        }
-
-        # --------------------------------------------------------
-        # SQL function names
-        #
-        # We do not want:
-        #
-        # COUNT(...)
-        #
-        # to become a column.
-        # --------------------------------------------------------
-
-        function_names = set(
-            re.findall(
-                r"""
-                \b
-                ([A-Za-z_][A-Za-z0-9_]*)
-                \s*
-                \(
-                """,
-                query_without_qualified,
-                re.IGNORECASE | re.VERBOSE,
-            )
-        )
-
-        function_names = {
-            name.upper()
-            for name in function_names
-        }
-
-        # --------------------------------------------------------
-        # Extract identifiers
-        # --------------------------------------------------------
-
-        identifiers = re.findall(
-            r"\b[A-Za-z_][A-Za-z0-9_]*\b",
-            query_without_qualified,
-        )
-
-        # --------------------------------------------------------
-        # Extract tables / aliases so they are not treated
-        # as columns.
-        #
-        # Example:
-        #
-        # SELECT name FROM customers
-        #
-        # "customers" is a table, NOT a column.
-        # --------------------------------------------------------
-
-        table_names_and_aliases = set()
-
-        table_matches = re.finditer(
-            r"""
-            \b(?:FROM|JOIN)\s+
-            ([A-Za-z_][A-Za-z0-9_]*)
-            (?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?
-            """,
-            query_without_qualified,
-            re.IGNORECASE | re.VERBOSE,
-        )
-
-        for match in table_matches:
-
-            table_name = match.group(1)
-            alias = match.group(2)
-
-            if table_name:
-                table_names_and_aliases.add(
-                    table_name.lower()
+            if not has_condition and not is_natural:
+                raise SQLValidationError(
+                    "Every JOIN needs an ON or USING condition. "
+                    "Cartesian products and comma joins are not allowed."
                 )
 
-            if alias:
-                table_names_and_aliases.add(
-                    alias.lower()
-                )
-
-        # --------------------------------------------------------
-        # Extract SELECT aliases
-        #
-        # Example:
-        #
-        # SELECT AVG(faithfulness_0_1) AS avg_faithfulness
-        # FROM rag_evaluation
-        #
-        # "avg_faithfulness" is an output alias,
-        # NOT a real database column.
-        # --------------------------------------------------------
-
-        select_aliases = set()
-
-        alias_matches = re.findall(
-            r"""
-            \bAS\s+
-            ([A-Za-z_][A-Za-z0-9_]*)
-            \b
-            """,
-            query_without_qualified,
-            re.IGNORECASE | re.VERBOSE,
-        )
-
-        for alias in alias_matches:
-            select_aliases.add(
-                alias.lower()
-            )
-
-        # --------------------------------------------------------
-        # Keep only actual column candidates
-        # --------------------------------------------------------
-
-        for identifier in identifiers:
-
-            upper_identifier = identifier.upper()
-            lower_identifier = identifier.lower()
-
-            # SQL keywords
-            if upper_identifier in ignored_keywords:
-                continue
-
-            # SQL functions
-            if upper_identifier in function_names:
-                continue
-
-            # Table names / aliases
-            if lower_identifier in table_names_and_aliases:
-                continue
-
-            # SELECT aliases
-            #
-            # Example:
-            #
-            # AVG(score) AS avg_score
-            #
-            # avg_score is NOT a database column.
-            if lower_identifier in select_aliases:
-                continue
-
-            columns.append(identifier)
-
-        return columns
-
+    # ------------------------------------------------------------------
+    # Tables / columns
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _validate_columns(
-        columns: List[str],
-        tables: Dict[str, str],
-        schema: Dict[str, Any],
-    ) -> None:
+    def _schema_columns(schema: Dict[str, Any]) -> Dict[str, List[str]]:
 
-        # --------------------------------------------------------
-        # Build available columns for every table
-        # --------------------------------------------------------
-
-        table_columns = {
-
-            table_name: {
+        return {
+            table: [
                 column["name"]
-                for column in table_info.get(
-                    "columns",
-                    [],
-                )
-            }
-
-            for table_name, table_info
-            in schema.items()
+                for column in (info or {}).get("columns", [])
+            ]
+            for table, info in schema.items()
         }
 
-        # --------------------------------------------------------
-        # Validate each column
-        # --------------------------------------------------------
-
-        for column_reference in columns:
-
-            # ====================================================
-            # Qualified column
-            #
-            # Example:
-            #
-            # c.name
-            # ====================================================
-
-            if "." in column_reference:
-
-                alias, column_name = (
-                    column_reference.split(
-                        ".",
-                        1,
-                    )
-                )
-
-                # ----------------------------------------------
-                # Alias must exist
-                # ----------------------------------------------
-
-                if alias not in tables:
-
-                    raise SQLValidationError(
-                        f"Unknown table alias: {alias}"
-                    )
-
-                table_name = tables[alias]
-
-                # ----------------------------------------------
-                # Column must exist
-                # ----------------------------------------------
-
-                if column_name not in table_columns.get(
-                    table_name,
-                    set(),
-                ):
-
-                    raise SQLValidationError(
-                        f"Unknown column: "
-                        f"{table_name}.{column_name}"
-                    )
-
-                continue
-
-            # ====================================================
-            # Unqualified column
-            #
-            # Example:
-            #
-            # SELECT name FROM customers
-            # ====================================================
-
-            column_name = column_reference
-
-            matching_tables = [
-                table_name
-                for table_name in set(
-                    tables.values()
-                )
-                if column_name in table_columns.get(
-                    table_name,
-                    set(),
-                )
-            ]
-
-            # ----------------------------------------------
-            # Column does not exist anywhere
-            # ----------------------------------------------
-
-            if not matching_tables:
-
-                raise SQLValidationError(
-                    f"Unknown column: {column_name}"
-                )
-
-            # ----------------------------------------------
-            # Column exists in more than one table
-            #
-            # Example:
-            #
-            # customers.id
-            # orders.id
-            #
-            # SELECT id
-            #
-            # This is ambiguous and should be rejected.
-            # ----------------------------------------------
-
-            if len(matching_tables) > 1:
-
-                raise SQLValidationError(
-                    f"Ambiguous column: {column_name}. "
-                    "Qualify the column with a table alias."
-                )
-    @staticmethod
-    def _extract_join_conditions(
-        query: str,
-    ) -> List[Tuple[str, str]]:
-
-        """
-        Extract:
-
-            JOIN orders o
-            ON c.id = o.customer_id
-
-        into:
-
-            [
-                (
-                    "c.id",
-                    "o.customer_id"
-                )
-            ]
-        """
-
-        conditions: List[
-            Tuple[str, str]
-        ] = []
-
-        pattern = re.compile(
-            r"""
-            \b
-            JOIN
-            \s+
-            [A-Za-z_][A-Za-z0-9_]*
-            (?:
-                \s+
-                AS?
-                \s+
-                [A-Za-z_][A-Za-z0-9_]*
-            )?
-            \s+
-            ON
-            \s+
-            (?P<left_alias>
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            \.
-            (?P<left_column>
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            \s*
-            =
-            \s*
-            (?P<right_alias>
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            \.
-            (?P<right_column>
-                [A-Za-z_][A-Za-z0-9_]*
-            )
-            """,
-            re.IGNORECASE | re.VERBOSE,
-        )
-
-        for match in pattern.finditer(query):
-
-            left = (
-                f"{match.group('left_alias')}."
-                f"{match.group('left_column')}"
-            )
-
-            right = (
-                f"{match.group('right_alias')}."
-                f"{match.group('right_column')}"
-            )
-
-            conditions.append(
-                (
-                    left,
-                    right,
-                )
-            )
-
-        return conditions
-
-    # ============================================================
-    # Build Foreign Key Relationships
-    # ============================================================
-
-    @staticmethod
-    def _build_relationships(
-        schema: Dict[str, Any],
-    ) -> List[
-        Tuple[str, str, str, str]
-    ]:
-
-        """
-        Convert schema FK definitions into:
-
-            (
-                source_table,
-                source_column,
-                target_table,
-                target_column
-            )
-        """
-
-        relationships = []
-
-        for table_name, table_info in schema.items():
-
-            foreign_keys = table_info.get(
-                "foreign_keys",
-                [],
-            )
-
-            for foreign_key in foreign_keys:
-
-                source_column = foreign_key.get(
-                    "column"
-                )
-
-                target_table = foreign_key.get(
-                    "references_table"
-                )
-
-                target_column = foreign_key.get(
-                    "references_column"
-                )
-
-                if not source_column:
-                    continue
-
-                if not target_table:
-                    continue
-
-                if not target_column:
-                    continue
-
-                relationships.append(
-                    (
-                        table_name,
-                        source_column,
-                        target_table,
-                        target_column,
-                    )
-                )
-
-        return relationships
-
-    # ============================================================
-    # Validate JOIN Relationships
-    # ============================================================
-
-    @classmethod
-    def _validate_join_relationships(
-        cls,
-        query: str,
-        tables: Dict[str, str],
+    def _validate_tables(
+        self,
+        root: exp.Expression,
         schema: Dict[str, Any],
     ) -> None:
 
-        join_conditions = cls._extract_join_conditions(
-            query
-        )
+        known = {name.lower() for name in schema}
 
-        # No JOIN
-        if not join_conditions:
-            return
+        cte_names = {
+            cte.alias_or_name.lower()
+            for cte in root.find_all(exp.CTE)
+        }
 
-        relationships = cls._build_relationships(
-            schema
-        )
+        for table in root.find_all(exp.Table):
 
-        # --------------------------------------------------------
-        # Build normalized relationship set
-        # --------------------------------------------------------
+            if not isinstance(table.this, exp.Identifier):
+                # table-valued function, already handled elsewhere
+                continue
 
-        normalized_relationships = set()
+            name = table.name.lower()
 
-        for (
-            source_table,
-            source_column,
-            target_table,
-            target_column,
-        ) in relationships:
+            if not table.db and name in cte_names:
+                continue
 
-            # Original FK direction
-            normalized_relationships.add(
-                (
-                    source_table,
-                    source_column,
-                    target_table,
-                    target_column,
-                )
-            )
-
-            # Reverse direction
-            normalized_relationships.add(
-                (
-                    target_table,
-                    target_column,
-                    source_table,
-                    source_column,
-                )
-            )
-
-        # --------------------------------------------------------
-        # Validate every JOIN
-        # --------------------------------------------------------
-
-        for left, right in join_conditions:
-
-            left_alias, left_column = left.split(
-                ".",
-                1,
-            )
-
-            right_alias, right_column = right.split(
-                ".",
-                1,
-            )
-
-            # ----------------------------------------------------
-            # Validate aliases
-            # ----------------------------------------------------
-
-            if left_alias not in tables:
-
+            if table.db and table.db.lower() not in ("main", "public"):
                 raise SQLValidationError(
-                    f"Unknown JOIN table alias: "
-                    f"{left_alias}"
+                    f"Schema-qualified table is not allowed: {table.db}.{table.name}."
                 )
 
-            if right_alias not in tables:
-
+            if name not in known:
                 raise SQLValidationError(
-                    f"Unknown JOIN table alias: "
-                    f"{right_alias}"
+                    f"Unknown table: {table.name}. "
+                    f"Available tables: {', '.join(schema) or 'none'}."
                 )
 
-            left_table = tables[left_alias]
-            right_table = tables[right_alias]
+    def _validate_columns(
+        self,
+        root: exp.Expression,
+        schema: Dict[str, Any],
+        dialect: Optional[str],
+    ) -> None:
 
-            # ----------------------------------------------------
-            # Build relationship
-            # ----------------------------------------------------
+        columns = self._schema_columns(schema)
 
-            relationship = (
-                left_table,
-                left_column,
-                right_table,
-                right_column,
+        mapping = {
+            table: {name: "TEXT" for name in names}
+            for table, names in columns.items()
+        }
+
+        try:
+            qualify(
+                root.copy(),
+                schema=mapping,
+                dialect=dialect,
+                validate_qualify_columns=True,
+                identify=False,
             )
 
-            # ----------------------------------------------------
-            # Validate FK relationship
-            # ----------------------------------------------------
+        except OptimizeError as exc:
 
-            if relationship not in normalized_relationships:
+            used = {
+                t.name.lower() for t in root.find_all(exp.Table)
+            }
 
-                raise SQLValidationError(
-                    "Invalid JOIN relationship: "
-                    f"{left_table}.{left_column} = "
-                    f"{right_table}.{right_column}. "
-                    "The relationship is not supported "
-                    "by the database schema."
-                )
-
-    # ============================================================
-    # Apply LIMIT
-    # ============================================================
-
-    @staticmethod
-    def _apply_limit(
-        query: str,
-        max_rows: int,
-    ) -> str:
-
-        if max_rows <= 0:
+            hint = "; ".join(
+                f"{table}({', '.join(names)})"
+                for table, names in columns.items()
+                if table.lower() in used
+            )
 
             raise SQLValidationError(
-                "max_rows must be greater than zero."
+                f"{str(exc).splitlines()[0]}."
+                + (f" Available columns: {hint}." if hint else "")
             )
 
-        if re.search(
-            r"\bLIMIT\s+\d+\b",
-            query,
-            re.IGNORECASE,
+        except SqlglotError as exc:
+            raise SQLValidationError(
+                f"Could not validate the query: {str(exc).splitlines()[0]}"
+            )
+
+    # ------------------------------------------------------------------
+    # Row limit
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_limit(root: exp.Expression, max_rows: int) -> exp.Expression:
+
+        limit = root.args.get("limit")
+
+        if limit is None:
+            return root.limit(max_rows)
+
+        value = limit.args.get("expression")
+
+        if (
+            isinstance(value, exp.Literal)
+            and value.is_int
+            and int(value.name) <= max_rows
         ):
-            return query
+            return root
 
-        return (
-            f"{query}\n"
-            f"LIMIT {max_rows}"
-        )
-
+        return root.limit(max_rows)

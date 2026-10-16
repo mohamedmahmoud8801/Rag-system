@@ -200,12 +200,13 @@ async def ingest_excel(
 
         controller = ExcelSQLController(
             project_id=request.project_id,
-            provider=request.provider.value,
-            database_url=request.database_url
+            provider=request.provider.value if request.provider else None,
+            database_url=request.database_url,   # rejected by the controller: Excel has its own store
         )
 
         result = await controller.ingest(
-            file_id=request.file_id
+            file_id=request.file_id,
+            if_exists=request.if_exists,
         )
 
         return {

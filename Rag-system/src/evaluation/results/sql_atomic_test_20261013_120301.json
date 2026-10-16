@@ -1,0 +1,16 @@
+[
+  {
+    "id": "S01",
+    "category": "simple",
+    "question": "How many students are there?",
+    "gold_sql": "SELECT COUNT(*) FROM students",
+    "predicted_sql": "SELECT COUNT(*) FROM students LIMIT 100",
+    "status": "correct",
+    "attempts": 1,
+    "verified": null,
+    "gold_rows": 1,
+    "predicted_rows": 1,
+    "error": "",
+    "seconds": 183.2
+  }
+]

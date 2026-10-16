@@ -1,23 +1,27 @@
-from typing import List, Optional
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 from stores.sql.SQLEnums import SQLProviderEnum
 
 
+# database_url / provider are OPTIONAL everywhere: when omitted the
+# server uses SQL_DATABASE_URL / SQL_PROVIDER from its settings. A custom
+# database_url is only accepted when SQL_ALLOW_CLIENT_DATABASE_URL=true.
+
 class SQLSchemaRequest(BaseModel):
 
-    database_url: str
+    database_url: Optional[str] = None
 
-    provider: str = "sqlite"
+    provider: Optional[str] = None
 
     tables: Optional[List[str]] = None
 
 
 class SQLExecuteRequest(BaseModel):
 
-    database_url: str
+    database_url: Optional[str] = None
 
-    provider: str = "sqlite"
+    provider: Optional[str] = None
 
     query: str = Field(
         ...,
@@ -33,9 +37,9 @@ class SQLExecuteRequest(BaseModel):
 
 class SQLQueryRequest(BaseModel):
 
-    database_url: str
+    database_url: Optional[str] = None
 
-    provider: str = "sqlite"
+    provider: Optional[str] = None
 
     question: str = Field(
         ...,
@@ -54,12 +58,19 @@ class SQLQueryRequest(BaseModel):
         le=5
     )
 
+
 class ExcelSQLIngestRequest(BaseModel):
 
-    project_id: str
+    project_id: Union[int, str]
 
     file_id: str
 
-    provider: SQLProviderEnum
+    # Not accepted any more: Excel sheets are stored in the project's own
+    # Excel database. Left here only to give old clients a clear error.
+    provider: Optional[SQLProviderEnum] = None
 
-    database_url: str
+    database_url: Optional[str] = None
+
+    # "fail": stop if a table with the same name already exists
+    # "replace": drop and recreate tables with the same name
+    if_exists: Literal["fail", "replace"] = "fail"

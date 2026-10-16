@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import re
@@ -14,6 +15,10 @@ from stores.sql.SQLValidator import (
 )
 
 from stores.sql.templates import SQLTemplateParser
+from stores.sql.SchemaCache import schema_cache
+
+from helpers.config import get_settings
+from helpers.sql_access import resolve_sql_target
 
 from stores.llm.LLMEnums import (
     OpenAIEnums,
@@ -97,6 +102,13 @@ Return exactly one SELECT statement.
         database_url: str,
     ) -> SQLModel:
 
+        # Which database may be used is decided by the server
+        # (SQL_DATABASE_URL), not by the client.
+        provider, database_url = resolve_sql_target(
+            provider,
+            database_url,
+        )
+
         provider_enum = SQLProviderEnum(
             provider.lower()
         )
@@ -115,6 +127,43 @@ Return exactly one SELECT statement.
     # ========================================================
 
     async def get_schema(
+        self,
+        provider: Optional[str] = None,
+        database_url: Optional[str] = None,
+        tables: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+
+        resolved_provider, resolved_url = resolve_sql_target(
+            provider,
+            database_url,
+        )
+
+        key = (
+            resolved_provider,
+            resolved_url,
+            "schema",
+            tuple(sorted(tables)) if tables else None,
+        )
+
+        ttl = get_settings().SQL_SCHEMA_CACHE_TTL
+
+        cached = schema_cache.get(key, ttl)
+
+        if cached is not None:
+            return cached
+
+        schema = await self._get_schema_uncached(
+            provider=resolved_provider,
+            database_url=resolved_url,
+            tables=tables,
+        )
+
+        if schema:
+            schema_cache.set(key, schema)
+
+        return schema
+
+    async def _get_schema_uncached(
         self,
         provider: str,
         database_url: str,
@@ -139,6 +188,42 @@ Return exactly one SELECT statement.
     # ========================================================
 
     async def _enrich_schema_with_sample_values(
+        self,
+        provider: str,
+        database_url: str,
+        schema: Dict[str, Any],
+    ) -> Dict[str, Any]:
+
+        resolved_provider, resolved_url = resolve_sql_target(
+            provider,
+            database_url,
+        )
+
+        key = (
+            resolved_provider,
+            resolved_url,
+            "enriched",
+            tuple(sorted(schema)),
+        )
+
+        ttl = get_settings().SQL_SCHEMA_CACHE_TTL
+
+        cached = schema_cache.get(key, ttl)
+
+        if cached is not None:
+            return cached
+
+        enriched = await self._enrich_schema_with_sample_values_uncached(
+            provider=resolved_provider,
+            database_url=resolved_url,
+            schema=schema,
+        )
+
+        schema_cache.set(key, enriched)
+
+        return enriched
+
+    async def _enrich_schema_with_sample_values_uncached(
         self,
         provider: str,
         database_url: str,
@@ -353,6 +438,66 @@ Return exactly one SELECT statement.
             model.provider.disconnect()
 
     # ========================================================
+    # Validation / execution helpers
+    # ========================================================
+
+    def _validate_sql(
+        self,
+        provider: Optional[str],
+        database_url: Optional[str],
+        query: str,
+        schema: Dict[str, Any],
+        max_rows: int = 100,
+    ) -> str:
+
+        dialect, _ = resolve_sql_target(provider, database_url)
+
+        return self.sql_validator.validate(
+            query=query,
+            schema=schema,
+            max_rows=max_rows,
+            dialect=dialect,
+        )
+
+    async def _execute_validated(
+        self,
+        provider: Optional[str],
+        database_url: Optional[str],
+        query: str,
+        max_rows: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        Run SQL that query() has ALREADY validated: no second schema read,
+        no second validation. The database enforces read-only mode, a
+        timeout and the row cap.
+        """
+
+        model = await self._create_model(
+            provider=provider,
+            database_url=database_url,
+        )
+
+        try:
+            result = await model.execute(
+                query=query,
+                max_rows=max_rows,
+                read_only=True,
+            )
+        finally:
+            model.provider.disconnect()
+
+        return {
+            "sql": query,
+            "result": result,
+            "columns": result.get("columns", []),
+            "rows": result.get("rows", []),
+            "row_count": result.get(
+                "row_count",
+                len(result.get("rows", [])),
+            ),
+        }
+
+    # ========================================================
     # Execute SQL Directly
     # ========================================================
 
@@ -391,7 +536,9 @@ Return exactly one SELECT statement.
             )
 
             validated_sql = (
-                self.sql_validator.validate(
+                self._validate_sql(
+                provider=provider,
+                database_url=database_url,
                     query=query,
                     schema=schema,
                     max_rows=max_rows,
@@ -413,7 +560,9 @@ Return exactly one SELECT statement.
             )
 
             result = await model.execute(
-                query=validated_sql
+                query=validated_sql,
+                max_rows=max_rows,
+                read_only=True,
             )
 
             logger.info(
@@ -843,13 +992,13 @@ Example:
 
 User:
 
-"show questions whose type is multi_hop"
+"show products whose category is books"
 
 Correct:
 
-SELECT question
-FROM rag_evaluation
-WHERE type = 'multi_hop'
+SELECT name
+FROM products
+WHERE category = 'books'
 
 ============================================================
 AGGREGATION
@@ -883,13 +1032,13 @@ GROUPING
 
 If the user asks:
 
-"how many questions of each type?"
+"how many products of each category?"
 
 Correct structure:
 
-SELECT type, COUNT(*)
-FROM rag_evaluation
-GROUP BY type
+SELECT category, COUNT(*)
+FROM products
+GROUP BY category
 
 ============================================================
 SORTING
@@ -1109,7 +1258,9 @@ Return only the corrected SQL.
                 )
 
                 validated_sql = (
-                    self.sql_validator.validate(
+                    self._validate_sql(
+                provider=provider,
+                database_url=database_url,
                         query=current_sql,
                         schema=schema,
                         max_rows=max_rows,
@@ -1168,7 +1319,7 @@ Return only the corrected SQL.
                     "[SQL DEBUG] EXECUTING SQL"
                 )
 
-                execution_response = await self.execute(
+                execution_response = await self._execute_validated(
                     provider=provider,
                     database_url=database_url,
                     query=validated_sql,
@@ -1249,6 +1400,23 @@ Return only the corrected SQL.
             # STEP 2.3 - Semantic Verification
             # =============================================
 
+            if not get_settings().SQL_SEMANTIC_VERIFY:
+
+                logger.info(
+                    "[SQL DEBUG] SEMANTIC VERIFICATION -> SKIPPED "
+                    "(SQL_SEMANTIC_VERIFY=false)"
+                )
+
+                return {
+                    "question": question,
+                    "sql": validated_sql,
+                    "result": result,
+                    "schema": schema,
+                    "attempts": attempts,
+                    "errors": errors,
+                    "verified": None,
+                }
+
             try:
 
                 logger.info(
@@ -1315,6 +1483,7 @@ Return only the corrected SQL.
                     "schema": schema,
                     "attempts": attempts,
                     "errors": errors,
+                    "verified": True,
                 }
 
             # =============================================
@@ -1352,6 +1521,7 @@ Return only the corrected SQL.
                     "schema": schema,
                     "attempts": attempts,
                     "errors": errors,
+                    "verified": True,
                 }
 
             # =============================================
@@ -1417,6 +1587,8 @@ Return only the corrected SQL.
                     "schema": schema,
                     "attempts": attempts,
                     "errors": errors,
+                    "verified": False,
+                    "warning": "Semantic verification failed; the result may not answer the question.",
                 }
 
             current_sql = (
@@ -2625,4 +2797,18 @@ Rules:
 
             sql = sql[:-3]
 
-        return sql.strip()
+        sql = sql.strip()
+
+        # The model sometimes talks before the query:
+        # "Here is the SQL: SELECT ..."
+        if not re.match(r"(?i)(select|with)\b", sql):
+
+            match = (
+                re.search(r"(?im)^\s*(select|with)\b", sql)
+                or re.search(r"(?i)\bselect\b", sql)
+            )
+
+            if match:
+                sql = sql[match.start():].strip()
+
+        return sql

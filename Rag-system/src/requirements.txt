@@ -25,3 +25,12 @@ psycopg2-binary==2.9.13
 requests==2.34.2
 youtube-transcript-api==1.2.4
 ragas==0.4.3
+sqlglot==30.22.0
+datacompy==1.1.0
+pandas==3.0.6
+openpyxl==3.1.5
+PyJWT==2.15.1
+argon2-cffi==25.1.0
+phonenumbers==9.0.41
+phonenumbers==9.0.41
+email-validator==2.3.0

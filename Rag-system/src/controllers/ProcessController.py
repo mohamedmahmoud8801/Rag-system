@@ -716,71 +716,82 @@ Return a short plain-text answer only.
 
             return None
 
+        workbook = None
+
         try:
 
+            # read_only streams the sheets instead of loading everything
+            # into memory.
             workbook = load_workbook(
                 file_path,
-                data_only=True
+                data_only=True,
+                read_only=True
             )
 
             sheets = []
 
             for sheet_name in workbook.sheetnames:
 
-                sheet = workbook[sheet_name]
-
-                rows = list(
-                    sheet.iter_rows(
-                        values_only=True
-                    )
+                rows = workbook[sheet_name].iter_rows(
+                    values_only=True
                 )
 
-                if not rows:
+                headers = next(rows, None)
+
+                if not headers:
                     continue
 
-                headers = rows[0]
-
-                columns = []
+                # Blank headers are skipped. Duplicate headers get a
+                # numeric suffix (Score, Score_2) so no column silently
+                # overwrites another one.
+                header_names = []
+                used = set()
 
                 for header in headers:
 
-                    if header is None:
+                    if header is None or not str(header).strip():
+                        header_names.append(None)
                         continue
 
-                    columns.append(
-                        str(header).strip()
-                    )
+                    base = str(header).strip()
+                    candidate = base
+                    counter = 1
+
+                    while candidate.casefold() in used:
+                        counter += 1
+                        candidate = f"{base}_{counter}"
+
+                    used.add(candidate.casefold())
+                    header_names.append(candidate)
+
+                columns = [
+                    name for name in header_names if name
+                ]
+
+                if not columns:
+                    continue
 
                 records = []
 
-                for row in rows[1:]:
+                for row in rows:
 
                     record = {}
 
                     for index, value in enumerate(row):
 
-                        if index >= len(headers):
-                            continue
+                        if index >= len(header_names):
+                            break
 
-                        header = headers[index]
+                        name = header_names[index]
 
-                        if header is None:
-                            continue
-
-                        column_name = str(
-                            header
-                        ).strip()
-
-                        record[column_name] = value
+                        if name:
+                            record[name] = value
 
                     if any(
                         value is not None
                         for value in record.values()
                     ):
-
-                        records.append(
-                            record
-                        )
+                        records.append(record)
 
                 sheets.append(
                     {
@@ -810,6 +821,11 @@ Return a short plain-text answer only.
             )
 
             return None
+
+        finally:
+
+            if workbook is not None:
+                workbook.close()
 
     # =============================================================
     # IMAGE MIME TYPE

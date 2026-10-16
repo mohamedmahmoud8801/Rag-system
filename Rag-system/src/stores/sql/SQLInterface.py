@@ -1,5 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+# One statement inside a transaction:
+#   (sql, None)        -> executed once
+#   (sql, [row, ...])  -> executed once per row (executemany), named params
+Statement = Tuple[str, Optional[List[Dict[str, Any]]]]
 
 
 class SQLInterface(ABC):
@@ -24,9 +29,20 @@ class SQLInterface(ABC):
     def execute(
         self,
         query: str,
-        params: Optional[Dict[str, Any]] = None
+        params: Optional[Dict[str, Any]] = None,
+        max_rows: Optional[int] = None,
+        read_only: bool = False,
     ) -> Dict[str, Any]:
-        pass
+        """
+        Run one statement in its own transaction (committed on success).
+
+        max_rows  : stop fetching after this many rows (result["truncated"]).
+        read_only : the database itself refuses writes and long queries.
+        """
+
+    @abstractmethod
+    def execute_transaction(self, statements: List[Statement]) -> None:
+        """Run several statements atomically: all of them or none."""
 
     @abstractmethod
     def validate_connection(self) -> bool:

@@ -1,8 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from stores.sql.SQLEnums import SQLProviderEnum
-from stores.sql.SQLInterface import SQLInterface
-from stores.sql.SQLProviderFactory import SQLProviderFactory
+from stores.sql.SQLInterface import SQLInterface, Statement
 
 
 class SQLModel:
@@ -35,9 +33,22 @@ class SQLModel:
 
     async def execute(
         self,
-        query: str
+        query: str,
+        max_rows: Optional[int] = None,
+        read_only: bool = False,
     ) -> Dict[str, Any]:
 
         return self.provider.execute(
-            query=query
+            query=query,
+            max_rows=max_rows,
+            read_only=read_only,
+        )
+
+    async def execute_transaction(
+        self,
+        statements: List[Statement]
+    ) -> None:
+
+        self.provider.execute_transaction(
+            statements=statements
         )

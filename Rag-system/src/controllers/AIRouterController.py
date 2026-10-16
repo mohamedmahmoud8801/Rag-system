@@ -1,3 +1,5 @@
+from typing import Optional
+
 from stores.router.AIRouter import AIRouter
 from stores.router.RouterEnums import RouterIntentEnum
 
@@ -52,7 +54,7 @@ class AIRouterController:
         max_output_tokens: int = None,
         temperature: float = None,
         database_url: str = None,
-        provider: str = "sqlite",
+        provider: Optional[str] = None,
         max_rows: int = 100,
         max_retries: int = 2,
     ):
@@ -69,10 +71,8 @@ class AIRouterController:
 
         if intent == RouterIntentEnum.SQL.value:
 
-            if not database_url:
-                raise ValueError(
-                    "database_url is required when router intent is SQL."
-                )
+            # database_url / provider are optional: when omitted the
+            # server uses SQL_DATABASE_URL / SQL_PROVIDER.
 
             result = await self.sql_controller.query(
                 provider=provider,

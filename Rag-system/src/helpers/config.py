@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import  List
+from typing import  List,Optional
 from pathlib import Path
 class Settings(BaseSettings):
 
@@ -76,7 +76,17 @@ class Settings(BaseSettings):
     SQL_DATABASE_URL: str
     SQL_MAX_ROWS: int = 100
     SQL_MAX_RETRIES: int = 2
-
+    SQL_ALLOW_CLIENT_DATABASE_URL: bool = False
+    SQL_SEMANTIC_VERIFY: bool = False
+    SQL_SCHEMA_CACHE_TTL: int = 300
+    EXCEL_MAX_ROWS_PER_SHEET: int = 100000
+    EXCEL_SQL_DIR: str = "assets/database/excel"
+    CONNECTIONS_DB_PATH: str = "assets/database/connections.db"
+    CONNECTIONS_SECRET_KEY: Optional[str] = None
+    CONNECTIONS_ALLOW_PRIVATE_HOSTS: bool = False
+    CONNECTIONS_MAX_PER_PROJECT: int = 10
+    SQLITE_CONNECT_DIR: str = "assets/database/sql"
+    SQLITE_UPLOAD_MAX_MB: int = 50
 # ======================= VIDEO =======================
 
     VIDEO_PROVIDER: str = "youtube"
