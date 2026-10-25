@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* colours measured from the v0 design (dark navy + blue) */
+  --background: 15 23 42;      /* #0f172a */
+  --sidebar: 11 18 34;         /* #0b1222 */
+  --card: 21 32 54;            /* #152036 */
+  --elevated: 28 41 68;
+  --border: 36 50 79;
+  --foreground: 226 232 240;   /* #e2e8f0 */
+  --muted: 148 163 184;        /* #94a3b8 */
+  --primary: 59 130 246;       /* #3b82f6 */
+  --primary-soft: 18 34 66;    /* #122242 */
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: "Geist Variable", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+html[dir="rtl"] body { font-family: "IBM Plex Sans Arabic", "Geist Variable", ui-sans-serif, system-ui, sans-serif; }
+
+::selection { background: rgb(var(--primary) / .35); }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--border)) transparent; }
+
+/* keep code and numbers left-to-right inside Arabic text */
+.ltr { direction: ltr; unicode-bidi: plaintext; }
+
+.prose-chat p { margin: 0 0 .75rem; line-height: 1.75; }
+.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat ul, .prose-chat ol { margin: 0 0 .75rem; padding-inline-start: 1.25rem; line-height: 1.75; }
+.prose-chat ul { list-style: disc; } .prose-chat ol { list-style: decimal; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 600; margin: 1rem 0 .5rem; }
+.prose-chat code { background: rgb(var(--background)); border: 1px solid rgb(var(--border)); padding: .1rem .35rem; border-radius: .35rem; font-size: .85em; direction: ltr; unicode-bidi: isolate; }
+.prose-chat pre { background: rgb(var(--sidebar)); border: 1px solid rgb(var(--border)); padding: .85rem 1rem; border-radius: .75rem; overflow-x: auto; direction: ltr; margin: 0 0 .75rem; }
+.prose-chat pre code { background: none; border: 0; padding: 0; }
+.prose-chat a { color: rgb(var(--primary)); text-decoration: underline; }
+.prose-chat table { border-collapse: collapse; margin-bottom: .75rem; }
+.prose-chat th, .prose-chat td { border: 1px solid rgb(var(--border)); padding: .35rem .6rem; }

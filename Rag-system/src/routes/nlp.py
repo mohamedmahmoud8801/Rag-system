@@ -174,9 +174,6 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         db_client=request.app.db_client
     )
 
-    chunk_model = await ChunkModel.create_instance(
-            db_client=request.app.db_client
-    )
 
     project = await project_model.get_project_or_create_one(
         project_id=project_id
@@ -194,6 +191,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
 
     answer, full_prompt, chat_history, _contexts, sources = (
     await nlp_controller.answer_rag_question(
+        db_client = request.app.db_client,
         project=project,
         query=search_request.text,
         limit=search_request.limit,
