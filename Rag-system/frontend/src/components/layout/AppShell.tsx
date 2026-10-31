@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { BookOpen, ChevronDown, Database, FlaskConical, FolderOpen, Languages, LayoutDashboard, LogOut, Menu, MessageSquare, Settings, Users, Video, X } from "lucide-react";
+import {
+  BookOpen, ChevronDown, FlaskConical, FolderOpen, Languages, LayoutDashboard, LogOut, Menu,
+  MessageSquare, Settings, Table2, Upload, Users, Video, X,
+} from "lucide-react";
 import { Badge, Logo } from "@/components/ui";
 import { useAuth } from "@/hooks/auth";
 import { useClickAway } from "@/hooks/useClickAway";
@@ -14,7 +17,8 @@ const NAV = [
   { to: "/chat", key: "nav.chat", icon: MessageSquare },
   { to: "/knowledge", key: "nav.knowledge", icon: BookOpen },
   { to: "/video", key: "nav.video", icon: Video },
-  { to: "/data", key: "nav.data", icon: Database },
+  { to: "/data", key: "nav.data", icon: Upload },
+  { to: "/databases", key: "nav.databases", icon: Table2 },
   { to: "/evaluation", key: "nav.evaluation", icon: FlaskConical },
   { to: "/settings", key: "nav.settings", icon: Settings },
 ];
@@ -48,7 +52,6 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       <aside
         className={cn(
           "fixed inset-y-0 start-0 z-40 flex w-64 flex-col border-e border-border bg-sidebar transition-transform lg:static",
-          // slide it away only on small screens (and to the right side in RTL)
           open ? "translate-x-0" : "max-lg:-translate-x-full max-lg:rtl:translate-x-full",
         )}
       >
@@ -89,10 +92,7 @@ function ProjectChip() {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => {
-          setDraft(String(projectId));
-          setOpen((v) => !v);
-        }}
+        onClick={() => { setDraft(String(projectId)); setOpen((v) => !v); }}
         className="flex h-9 items-center gap-2 rounded-xl border border-border bg-card px-3 text-[13px] hover:bg-elevated/60"
       >
         <FolderOpen className="size-4 text-primary" />
@@ -103,26 +103,16 @@ function ProjectChip() {
 
       {open && (
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setProjectId(Number(draft));
-            setOpen(false);
-          }}
+          onSubmit={(e) => { e.preventDefault(); setProjectId(Number(draft)); setOpen(false); }}
           className="absolute start-0 top-11 z-20 w-56 animate-fade-in rounded-xl border border-border bg-card p-3 shadow-2xl"
         >
           <label className="mb-1.5 block text-xs text-muted">{t("common.project")} #</label>
           <div className="flex gap-2">
             <input
-              type="number"
-              min={1}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              dir="ltr"
+              type="number" min={1} value={draft} onChange={(e) => setDraft(e.target.value)} dir="ltr"
               className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
-            <button type="submit" className="h-9 rounded-lg bg-primary px-3 text-sm font-medium text-white">
-              OK
-            </button>
+            <button type="submit" className="h-9 rounded-lg bg-primary px-3 text-sm font-medium text-white">OK</button>
           </div>
         </form>
       )}
@@ -164,8 +154,7 @@ function UserMenu() {
             </Badge>
           </div>
           <button onClick={() => signOut()} className="mt-1 flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm text-danger hover:bg-danger/10">
-            <LogOut className="size-4" />
-            {t("common.signOut")}
+            <LogOut className="size-4" /> {t("common.signOut")}
           </button>
         </div>
       )}
@@ -192,8 +181,7 @@ export function AppShell() {
 
           <div className="flex items-center gap-1.5">
             <button onClick={toggle} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] text-muted hover:bg-elevated/60 hover:text-foreground">
-              <Languages className="size-4" />
-              {t("common.language")}
+              <Languages className="size-4" /> {t("common.language")}
             </button>
             <UserMenu />
           </div>

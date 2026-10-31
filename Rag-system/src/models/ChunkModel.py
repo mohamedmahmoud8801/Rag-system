@@ -145,3 +145,19 @@ class ChunkModel(BaseDataModel):
                 records_count = await session.execute(count_sql)
                 total_count = records_count.scalar()
             return total_count
+
+    async def search_full_text(self, project_id: int, query: str, limit: int = 10):
+        async with self.db_client() as session:
+            async with session.begin():
+                stmt = select(DataChunk).where(
+                    DataChunk.chunk_project_id == project_id,
+                    DataChunk.chunk_text.match(query, postgresql_regconfig='simple')
+                ).limit(limit)
+                result = await session.execute(stmt)
+                return result.scalars().all()
+    async def get_chunks_by_asset_id(self, asset_id: int):
+        async with self.db_client() as session:
+            async with session.begin():
+                stmt = select(DataChunk).where(DataChunk.chunk_asset_id == asset_id).order_by(DataChunk.chunk_order)
+                result = await session.execute(stmt)
+                return result.scalars().all()

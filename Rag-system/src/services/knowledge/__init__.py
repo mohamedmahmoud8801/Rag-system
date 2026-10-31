@@ -5,3 +5,5 @@ from .KnowledgeKeyPointsService import KnowledgeKeyPointsService
 from .KnowledgeNotesService import KnowledgeNotesService
 from .KnowledgeFlashcardsService import KnowledgeFlashcardsService
 from .KnowledgeQuizService import KnowledgeQuizService
+from .KnowledgeFAQService import KnowledgeFAQService
+from .KnowledgeMindMapService import KnowledgeMindMapService

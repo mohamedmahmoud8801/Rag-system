@@ -54,9 +54,26 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       toggle: () => setLang((l) => (l === "ar" ? "en" : "ar")),
       errorText: (error: unknown) => {
         if (error instanceof ApiError) {
+          // If it's a network error or timeout
+          if (error.status === 0 || error.code === "network_error") {
+            return t("err.network_error");
+          }
+          // If it's a server crash (500+)
+          if (error.status >= 500) {
+            return t("err.server_error");
+          }
+          
+          // Known API errors
           const key = `err.${error.code}`;
-          return dictionaries[lang][key] ? t(key) : dictionaries[lang]["err.unknown"] ?? error.message;
+          if (dictionaries[lang][key]) {
+            return t(key);
+          }
+          
+          // Fallback for unknown API errors
+          return t("err.unknown");
         }
+        
+        // Fallback for completely unexpected errors
         return t("err.unknown");
       },
     }),

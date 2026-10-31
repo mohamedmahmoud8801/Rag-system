@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, BookOpen, Database, MessageSquare, Video } from "lucide-react";
+import { ArrowUpRight, BookOpen, MessageSquare, Table2, Upload, Video } from "lucide-react";
 import { Page } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui";
 import { useAuth } from "@/hooks/auth";
@@ -12,7 +12,8 @@ export default function Dashboard() {
 
   const tiles = [
     { to: "/chat", icon: MessageSquare, title: t("nav.chat"), text: t("chat.subtitle") },
-    { to: "/data", icon: Database, title: t("nav.data"), text: lang === "ar" ? "ارفع Excel أو اربط قاعدة بيانات واسألها بالعربي." : "Upload Excel or connect a database and ask in plain language." },
+    { to: "/data", icon: Upload, title: t("nav.data"), text: lang === "ar" ? "ارفع PDF / صور / Excel وقسّمها وفهرسها." : "Upload PDF / images / Excel, chunk and index." },
+    { to: "/databases", icon: Table2, title: t("nav.databases"), text: lang === "ar" ? "اربط Postgres أو SQLite واسأل بلغتك." : "Connect Postgres or SQLite and ask in plain language." },
     { to: "/knowledge", icon: BookOpen, title: t("nav.knowledge"), text: lang === "ar" ? "ملخصات وبطاقات واختبارات من مستنداتك." : "Summaries, flashcards and quizzes from your documents." },
     { to: "/video", icon: Video, title: t("nav.video"), text: lang === "ar" ? "حوّل فيديو يوتيوب إلى مادة قابلة للسؤال." : "Turn a YouTube video into something you can question." },
   ];
@@ -24,7 +25,7 @@ export default function Dashboard() {
       </h1>
       <p className="mt-1.5 text-[15px] text-muted">{lang === "ar" ? "ابدأ من هنا." : "Start from here."}</p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map(({ to, icon: Icon, title, text }) => (
           <Link key={to} to={to} className="group">
             <Card className="flex h-full items-start gap-4 p-6 transition-colors group-hover:border-primary/50 group-hover:bg-card/80">

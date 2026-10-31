@@ -1,70 +1,21 @@
-import { useCallback, useEffect, useRef, useState, type ElementType, type HTMLAttributes, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ElementType, type HTMLAttributes, type KeyboardEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, Bot, FileText, Loader2, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUp, Bot, ChevronDown, Database, Eye, FileSpreadsheet, FileText, Loader2, MessageSquarePlus, RotateCcw, Sparkles, Square } from "lucide-react";
 import { Alert, Button } from "@/components/ui";
-import { useAuth } from "@/hooks/auth";
-import { useProject } from "@/hooks/project";
 import { useI18n } from "@/i18n";
-import { api, ApiError } from "@/lib/api";
+import { useChat } from "@/hooks/chat";
+import { useData } from "@/hooks/data";
 import { cn } from "@/lib/utils";
 
-interface Source {
-  file_name: string;
-  page: number | null;
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-  error?: string;
-  seconds?: number;
-}
-
-interface AnswerResponse {
-  signal: string;
-  answer: string;
-  sources: Source[];
-}
-
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-// Every block takes its direction from its own first letter, so an English
-// answer inside the Arabic interface (or the opposite) is laid out correctly.
 const auto = (Tag: ElementType) => ({ node: _node, ...props }: { node?: unknown } & HTMLAttributes<HTMLElement>) => <Tag {...props} dir="auto" />;
-
 const markdownComponents = {
   p: auto("p"), ul: auto("ul"), ol: auto("ol"), li: auto("li"), blockquote: auto("blockquote"),
   h1: auto("h1"), h2: auto("h2"), h3: auto("h3"), table: auto("table"),
 } as unknown as Components;
 
-/** The conversation is kept in this browser, per user and project. */
-function useStoredMessages(userId: string, projectId: number) {
-  const key = `rag.chat.${userId}.${projectId}`;
-  const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(key) ?? "[]") as Message[];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(messages.filter((m) => !m.error).slice(-60)));
-    } catch {
-      /* storage full: the conversation just is not saved */
-    }
-  }, [key, messages]);
-
-  return [messages, setMessages] as const;
-}
-
-function SourceCards({ sources }: { sources: Source[] }) {
+function SourceCards({ sources }: { sources: any[] }) {
   const { t } = useI18n();
-
   return (
     <div className="mt-4">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{t("chat.sources")}</p>
@@ -76,6 +27,7 @@ function SourceCards({ sources }: { sources: Source[] }) {
             <div className="min-w-0 flex-1">
               <p dir="ltr" className="truncate text-start text-[13px] font-medium">{source.file_name}</p>
               {source.page != null && <p className="text-[11px] text-muted">{t("chat.page", { n: source.page })}</p>}
+              {source.snippet && <p className="truncate text-[11px] text-primary" dir="ltr">{source.snippet}</p>}
             </div>
           </div>
         ))}
@@ -84,9 +36,8 @@ function SourceCards({ sources }: { sources: Source[] }) {
   );
 }
 
-function AssistantMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+function AssistantMessage({ message, onRetry }: { message: any; onRetry?: () => void }) {
   const { t } = useI18n();
-
   return (
     <div className="flex gap-3.5 animate-fade-in">
       <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-card text-primary">
@@ -98,8 +49,7 @@ function AssistantMessage({ message, onRetry }: { message: Message; onRetry?: ()
             <p>{message.error}</p>
             {onRetry && (
               <button onClick={onRetry} className="mt-1.5 inline-flex items-center gap-1.5 font-medium underline underline-offset-2">
-                <RotateCcw className="size-3.5" />
-                {t("common.retry")}
+                <RotateCcw className="size-3.5" /> {t("common.retry")}
               </button>
             )}
           </Alert>
@@ -116,7 +66,7 @@ function AssistantMessage({ message, onRetry }: { message: Message; onRetry?: ()
   );
 }
 
-function Thinking() {
+function Thinking({ multimodal }: { multimodal: boolean }) {
   const { t } = useI18n();
   const [seconds, setSeconds] = useState(0);
 
@@ -131,7 +81,7 @@ function Thinking() {
         <Loader2 className="size-4 animate-spin" />
       </span>
       <div className="flex items-center gap-2.5 text-sm text-muted">
-        <span>{t("chat.thinking")}</span>
+        <span>{multimodal ? t("chat.thinkingMultimodal") : t("chat.thinking")}</span>
         <span className="flex gap-1">
           {[0, 1, 2].map((i) => (
             <span key={i} className="size-1.5 animate-pulse3 rounded-full bg-primary" style={{ animationDelay: `${i * 0.18}s` }} />
@@ -144,17 +94,16 @@ function Thinking() {
 }
 
 export default function Chat() {
-  const { t, errorText } = useI18n();
-  const { user } = useAuth();
-  const { projectId } = useProject();
-  const [messages, setMessages] = useStoredMessages(user?.id ?? "anon", projectId);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { t, locale } = useI18n();
+  const { sessions, currentId, setCurrentId, messages, newChat, loading, mode, setMode, ask, stop, dbs, selectedDb, setSelectedDb } = useChat();
+  const { files } = useData();
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const [input, setInput] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [targetFile, setTargetFile] = useState<string>("");
+  
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -167,114 +116,135 @@ export default function Chat() {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [input]);
 
-  const ask = useCallback(
-    async (question: string) => {
-      const text = question.trim();
-      if (!text || loading) return;
-
-      setMessages((list) => [...list.filter((m) => !m.error), { id: uid(), role: "user", content: text }]);
-      setInput("");
-      setLoading(true);
-
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const started = Date.now();
-
-      try {
-        const result = await api<AnswerResponse>(`/api/v1/nlp/index/answer/${projectId}`, { body: { text, limit: 10 }, signal: controller.signal });
-
-        setMessages((list) => [
-          ...list,
-          { id: uid(), role: "assistant", content: result.answer, sources: result.sources, seconds: Math.round((Date.now() - started) / 1000) },
-        ]);
-      } catch (error) {
-        if ((error as Error).name === "AbortError") return;
-
-        const message = error instanceof ApiError && error.code === "rag_answer_error" ? t("chat.noAnswer") : errorText(error);
-        setMessages((list) => [...list, { id: uid(), role: "assistant", content: "", error: message }]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loading, projectId, setMessages, t, errorText],
-  );
-
-  const lastQuestion = [...messages].reverse().find((m) => m.role === "user")?.content;
-
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter sends; Shift+Enter is a new line; Arabic/Chinese composition is left alone
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void ask(input);
+      if (input.trim() && !(mode === "database" && !selectedDb)) {
+        void ask(input, targetFile || undefined);
+        setInput("");
+      }
     }
   }
 
-  const suggestions = [t("chat.s1"), t("chat.s2"), t("chat.s3")];
+  const lastQuestion = [...messages].reverse().find((m) => m.role === "user")?.content;
+  const currentSession = sessions.find(s => s.id === currentId);
+
+  const modes = [
+    { id: "rag", label: "RAG", icon: Sparkles },
+    { id: "multimodal", label: t("chat.mode.multimodal"), icon: Eye },
+    { id: "excel", label: t("chat.mode.excel"), icon: FileSpreadsheet },
+    { id: "database", label: t("chat.mode.database"), icon: Database },
+  ] as const;
+
+  const isSendDisabled = !input.trim() || loading || (mode === "database" && !selectedDb);
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-4 sm:px-6">
-      <div className="flex items-center justify-between py-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 py-5">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">{t("chat.title")}</h1>
           <p className="text-[13px] text-muted">{t("chat.subtitle")}</p>
         </div>
-        {messages.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={() => setMessages([])}>
-            <Trash2 className="size-4" />
-            {t("chat.clear")}
+
+        <div className="flex items-center gap-2 relative">
+          <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium outline-none hover:bg-elevated/60 transition-colors">
+            <span className="max-w-[120px] truncate sm:max-w-[200px]">{currentSession?.title || "New Chat"}</span>
+            <ChevronDown className="size-4 text-muted" />
+          </button>
+
+          {showHistory && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowHistory(false)} />
+              <div className="absolute top-full end-0 mt-1 z-20 w-64 rounded-xl border border-border bg-card p-2 shadow-2xl animate-fade-in">
+                <div className="mb-1 px-2 text-xs font-semibold text-muted uppercase tracking-wider">{t("chat.history")}</div>
+                <div className="max-h-64 overflow-y-auto space-y-1">
+                  {sessions.map(s => (
+                    <button key={s.id} onClick={() => { setCurrentId(s.id); setShowHistory(false); }} className={cn("w-full text-start px-3 py-2 rounded-lg transition-colors flex flex-col", s.id === currentId ? "bg-primary/10 text-primary" : "hover:bg-elevated")}>
+                      <span className="text-sm font-medium truncate">{s.title}</span>
+                      <span className="text-[10px] text-muted mt-0.5" dir="ltr">{new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(s.updated_at))}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          <Button variant="secondary" size="sm" onClick={newChat} className="px-2 sm:px-3">
+            <MessageSquarePlus className="size-4 sm:me-1.5" />
+            <span className="hidden sm:inline">{t("chat.new")}</span>
           </Button>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {modes.map(m => (
+            <button key={m.id} onClick={() => setMode(m.id)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors", mode === m.id ? "border-primary/50 bg-primary-soft text-primary" : "border-border text-muted hover:text-foreground")}>
+              <m.icon className="size-3.5" />
+              <span className="hidden sm:inline">{m.label}</span>
+            </button>
+          ))}
+          {mode === "database" && (
+            <select value={selectedDb} onChange={(e) => setSelectedDb(e.target.value)} className="h-8 max-w-[120px] truncate rounded-lg border border-border bg-card px-2 text-xs outline-none hover:bg-elevated/60 sm:max-w-[160px]">
+              {dbs.length === 0 && <option value="">No databases</option>}
+              {dbs.map(db => <option key={db.id} value={db.id}>{db.name}</option>)}
+            </select>
+          )}
+        </div>
+
+        {mode === "rag" && files.length > 0 && (
+          <select 
+            value={targetFile} 
+            onChange={(e) => setTargetFile(e.target.value)} 
+            className="h-8 max-w-[180px] sm:max-w-[250px] truncate rounded-lg border border-primary/40 bg-primary/5 px-2 text-xs font-medium text-primary outline-none hover:bg-primary/10"
+          >
+            <option value="">كل الملفات (شامل)</option>
+            {files.map(f => <option key={f.file_id} value={f.file_id}>{f.name}</option>)}
+          </select>
         )}
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-7 overflow-y-auto pb-6 pe-1">
         {messages.length === 0 && !loading ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <span className="mb-5 grid size-14 place-items-center rounded-2xl bg-primary/15 text-primary">
-              <Sparkles className="size-6" />
-            </span>
+            <span className="mb-5 grid size-14 place-items-center rounded-2xl bg-primary/15 text-primary"><Sparkles className="size-6" /></span>
             <h2 className="text-2xl font-semibold tracking-tight">{t("chat.emptyTitle")}</h2>
             <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted">{t("chat.emptySub")}</p>
-            <div className="mt-8 flex max-w-2xl flex-wrap justify-center gap-2.5">
-              {suggestions.map((s) => (
-                <button key={s} onClick={() => ask(s)} className="rounded-full border border-border bg-card px-4 py-2 text-[13px] text-foreground/85 transition-colors hover:border-primary/50 hover:bg-primary-soft hover:text-foreground">
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           messages.map((message, index) =>
             message.role === "user" ? (
               <div key={message.id} className="flex justify-end animate-fade-in">
-                <div dir="auto" className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-ee-md bg-primary px-4 py-3 text-[15px] leading-relaxed text-white">{message.content}</div>
+                <div dir="auto" className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-ee-md bg-primary px-4 py-3 text-[15px] leading-relaxed text-white selection:bg-white/30 selection:text-white">{message.content}</div>
               </div>
             ) : (
-              <AssistantMessage key={message.id} message={message} onRetry={message.error && index === messages.length - 1 && lastQuestion ? () => ask(lastQuestion) : undefined} />
+              <AssistantMessage key={message.id} message={message} onRetry={message.error && index === messages.length - 1 && lastQuestion ? () => ask(lastQuestion, targetFile || undefined) : undefined} />
             ),
           )
         )}
-        {loading && <Thinking />}
+        {loading && <Thinking multimodal={mode === "multimodal"} />}
       </div>
 
       <div className="pb-5 pt-2">
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2.5 transition-colors focus-within:border-primary/50">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-            placeholder={t("chat.placeholder")}
-            className="max-h-[180px] min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] placeholder:text-muted/60 focus:outline-none"
+          <textarea 
+            ref={textareaRef} 
+            value={input} 
+            onChange={(e) => setInput(e.target.value)} 
+            onKeyDown={onKeyDown} 
+            rows={1} 
+            placeholder={targetFile ? `اسأل في ${files.find(f => f.file_id === targetFile)?.name}...` : t("chat.placeholder")} 
+            className="max-h-[180px] min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] placeholder:text-muted/60 focus:outline-none" 
           />
-          <button
-            onClick={() => ask(input)}
-            disabled={!input.trim() || loading}
-            aria-label={t("chat.send")}
-            className={cn("grid size-10 shrink-0 place-items-center rounded-xl transition-colors", input.trim() && !loading ? "bg-primary text-white hover:bg-primary/90" : "bg-elevated text-muted")}
-          >
-            <ArrowUp className="size-[18px]" />
-          </button>
+          {loading ? (
+            <button onClick={stop} title={t("chat.stop")} className="grid size-10 shrink-0 place-items-center rounded-xl transition-colors bg-danger/20 text-danger hover:bg-danger/30">
+              <Square className="size-[18px] fill-current" />
+            </button>
+          ) : (
+            <button onClick={() => { ask(input, targetFile || undefined); setInput(""); }} disabled={isSendDisabled} aria-label={t("chat.send")} className={cn("grid size-10 shrink-0 place-items-center rounded-xl transition-colors", !isSendDisabled ? "bg-primary text-white hover:bg-primary/90" : "bg-elevated text-muted")}>
+              <ArrowUp className="size-[18px]" />
+            </button>
+          )}
         </div>
       </div>
     </div>
