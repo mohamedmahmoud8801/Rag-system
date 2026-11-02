@@ -135,99 +135,75 @@ class NLPController(BaseController):
         return True
 
     async def search_vector_db_collection(
-        self,
-        project: Project,
-        text: str,
-        limit: int = 10,
-        file_id: str = None
-):
-
-        # Step 1: get collection name
-        query_vector = None
-        collection_name = self.create_collection_name(
-            project_id=project.project_id
-        )
-
-        # Step 2: get text embedding vector
-        vectors = self.embedding_client.embed_text(
-            text=text,
-            document_type=DocumentTypeEnum.QUERY.value
-        )
-
-        if not vectors or len(vectors) == 0:
-            return False
-
-        if isinstance(vectors, list) and len(vectors) > 0:
-            query_vector = vectors[0]
-
-        if not query_vector:
-            return False
-
-        # Step 3: semantic search
-        results = await self.vectordb_client.search_by_vector(
+    self,
+    project: Project,
+    text: str,
+    limit: int = 10,
+    file_id: str = None,
+    db_client = None,
+    ):
+        # 1. البحث الدلالي (Semantic Search)
+        query_vector = self.embedding_client.embed_text(text=text, document_type=DocumentTypeEnum.QUERY.value)[0]
+        collection_name = self.create_collection_name(project_id=project.project_id)
+        
+        semantic_results = await self.vectordb_client.search_by_vector(
             collection_name=collection_name,
             vector=query_vector,
             limit=limit,
             file_id=file_id
         )
 
-        if not results:
-            return False
-
-        # ==============================
-        # DEBUG: BEFORE RERANK
-        # ==============================
-        print("\n========== BEFORE RERANK ==========")
-
-        for i, doc in enumerate(results, 1):
-            print(
-                f"{i}. chunk_id={doc.chunk_id} "
-                f"vector_score={doc.score}"
-            )
-            print(f"DATA: {doc.model_dump()}")
-
-        # ==============================
-        # Step 4: RERANK
-        # ==============================
-        settings = get_settings()
-
-        if settings.RERANK_ENABLED:
-            reranked_results = self.reranker_client.rerank(
+        # 2. البحث بالكلمات المفتاحية (BM25 via Postgres)
+        keyword_results = []
+        if db_client:
+            chunk_model = await ChunkModel.create_instance(db_client=db_client)
+            keyword_results = await chunk_model.search_full_text(
+                project_id=project.project_id,
                 query=text,
-                documents=results,
+                limit=limit
+            )
+
+        # 3. دمج النتائج (Reciprocal Rank Fusion - RRF)
+        # بنعطي كل نتيجة نقاط بناءً على ترتيبها في القايمتين
+        fused_results = {}
+        
+        # وزن البحث الدلالي
+        for rank, doc in enumerate(semantic_results):
+            score = 1.0 / (60 + rank) 
+            fused_results[doc.chunk_id] = {"doc": doc, "score": score}
+
+        # وزن البحث بالكلمات المفتاحية
+        for rank, chunk in enumerate(keyword_results):
+            score = 1.0 / (60 + rank)
+            if chunk.chunk_id in fused_results:
+                # لو موجود في الاتنين، بنجمع النقاط
+                fused_results[chunk.chunk_id]["score"] += score
+            else:
+                # لو جديد، بنعمله نتيجة
+                doc = RetrievedDocument(
+                    text=chunk.chunk_text,
+                    chunk_id=chunk.chunk_id,
+                    metadata=chunk.chunk_metadata,
+                    score=0.0
+                )
+                fused_results[chunk.chunk_id] = {"doc": doc, "score": score}
+
+        # ترتيب النتائج النهائية
+        sorted_results = sorted(fused_results.values(), key=lambda x: x["score"], reverse=True)
+        final_docs = [item["doc"] for item in sorted_results[:limit]]
+
+        # 4. تطبيق الريرنك (Reranker) على النتائج المدمجة
+        settings = get_settings()
+        if settings.RERANK_ENABLED:
+            reranked = self.reranker_client.rerank(
+                query=text,
+                documents=final_docs,
                 top_k=settings.FINAL_CONTEXTS
             )
-        else:
-            reranked_results = results[:settings.FINAL_CONTEXTS]
-
-        if reranked_results and reranked_results[0].rerank_score is not None:
-            if reranked_results[0].rerank_score >= 0.5:
-                reranked_results = [
-                    d for d in reranked_results
-                    if d.rerank_score is None or d.rerank_score >= 0.05]
-        # ==============================
-        # DEBUG: AFTER RERANK
-        # ==============================
-        
-
-        print("\n========== AFTER RERANK ==========")
-
-        for i, doc in enumerate(reranked_results, 1):
-            print(
-                f"{i}. chunk_id={doc.chunk_id} "
-                f"vector_score={doc.score} "
-                f"rerank_score={doc.rerank_score}"
-            )
-            print(f"DATA: {doc.model_dump()}")
-        if not reranked_results:
-            return False
-
-        return reranked_results
-
+            return reranked
+            
+        return final_docs[:settings.FINAL_CONTEXTS]
     async def expand_neighbors(self, retrieved_documents, db_client):
-        """
-        يجيب الـ chunks المجاورة: أعلى chunk دايمًا، والباقي لو rerank_score >= threshold.
-        """
         settings = get_settings()
         window = getattr(settings, "NEIGHBOR_WINDOW", 1)
         min_rerank = getattr(settings, "NEIGHBOR_MIN_RERANK", 0.5)
@@ -247,9 +223,11 @@ class NLPController(BaseController):
         for rank, doc in enumerate(retrieved_documents):
             add(doc)
 
-            # أعلى نتيجة عند الـ reranker بتتوسع دايمًا، والباقي بالـ threshold
+            # بنوسع دايماً لو كانت أعلى نتيجة، أو لو الـ rerank_score بتاعها عالي
             is_top = rank == 0
             weak = doc.rerank_score is not None and doc.rerank_score < min_rerank
+            
+            # لو النتيجة ضعيفة ومش أعلى نتيجة، متوسعهاش
             if weak and not is_top:
                 continue
 
@@ -280,18 +258,10 @@ class NLPController(BaseController):
                     })
                 )
 
-            # رتّب الجيران بـ chunk_id عشان النص يتقرأ بالترتيب
             for n in sorted(neighbors, key=lambda d: d.chunk_id):
                 add(n)
 
-        print("\n========== AFTER NEIGHBOR EXPANSION ==========")
-        for i, d in enumerate(expanded, 1):
-            print(f"{i}. chunk_id={d.chunk_id} rerank_score={d.rerank_score}")
-
-        return expanded
-
-        
-    # ===== ضيف هنا =====
+        return expanded    
     def merge_consecutive_chunks(self, docs):
         by_id = {d.chunk_id: d for d in docs}
         pos = {d.chunk_id: i for i, d in enumerate(docs)}
@@ -309,7 +279,6 @@ class NLPController(BaseController):
 
         groups.sort(key=lambda g: min(pos[c] for c in g))
         return [" ".join(by_id[c].text.strip() for c in g) for g in groups]
-    # ===================
 
     async def enrich_retrieved_documents(self,retrieved_documents,db_client):
         chunk_model = await ChunkModel.create_instance(

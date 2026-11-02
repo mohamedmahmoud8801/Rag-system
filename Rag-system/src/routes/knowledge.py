@@ -1,20 +1,14 @@
 from fastapi import APIRouter, HTTPException, Request
-
 from controllers.KnowledgeController import KnowledgeController
 from models.ProjectModel import ProjectModel
-
 from routes.schemes.knowledge import KnowledgeRequest
+import traceback
 
-
-knowledge_router = APIRouter(
-    prefix="/api/v1/knowledge",
-    tags=["Knowledge"],
-)
-
+knowledge_router = APIRouter(prefix="/api/v1/knowledge", tags=["Knowledge"])
 
 def get_knowledge_controller(request: Request):
-
     return KnowledgeController(
+        db_client=request.app.db_client,
         vectordb_client=request.app.vectordb_client,
         embedding_client=request.app.embedding_client,
         reranker_client=request.app.reranker_client,
@@ -22,341 +16,129 @@ def get_knowledge_controller(request: Request):
         template_parser=request.app.template_parser,
     )
 
-
-async def get_project(
-    request: Request,
-    project_id: int,
-):
-
-    project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
-    )
-
-    project = await project_model.get_project_or_create_one(
-        project_id=project_id
-    )
-
-    if not project:
-        raise HTTPException(
-            status_code=400,
-            detail="Project not found."
-        )
-
+async def get_project(request: Request, project_id: int):
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create_one(project_id=project_id)
+    if not project: raise HTTPException(status_code=400, detail="Project not found.")
     return project
 
-
 def serialize_documents(documents):
-
-    serialized_documents = []
-
-    for document in documents or []:
-
-        if hasattr(document, "dict"):
-            serialized_documents.append(
-                document.dict()
-            )
-
-        elif hasattr(document, "model_dump"):
-            serialized_documents.append(
-                document.model_dump()
-            )
-
-        elif isinstance(document, dict):
-            serialized_documents.append(
-                document
-            )
-
-        else:
-            serialized_documents.append(
-                {
-                    "content": getattr(
-                        document,
-                        "page_content",
-                        str(document)
-                    )
-                }
-            )
-
-    return serialized_documents
-
-
-# ============================================================
-# Question Answering
-# ============================================================
+    serialized = []
+    for d in documents or []:
+        if hasattr(d, "model_dump"): serialized.append(d.model_dump())
+        elif hasattr(d, "dict"): serialized.append(d.dict())
+        elif isinstance(d, dict): serialized.append(d)
+        else: serialized.append({"content": getattr(d, "page_content", str(d))})
+    return serialized
 
 @knowledge_router.post("/qa/{project_id}")
-async def knowledge_qa(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_qa(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.answer(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "qa",
-            "query": result["query"],
-            "answer": result["answer"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "qa", "query": result.get("query", ""), "answer": result.get("answer"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
-
-
-# ============================================================
-# Summary
-# ============================================================
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @knowledge_router.post("/summary/{project_id}")
-async def knowledge_summary(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_summary(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.summarize(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "summary",
-            "query": result["query"],
-            "summary": result["summary"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "summary", "query": result.get("query", ""), "summary": result.get("summary"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
+@knowledge_router.post("/faq/{project_id}")
+async def knowledge_faq(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
+    try:
+        project = await get_project(request, project_id)
+        controller = get_knowledge_controller(request)
+        result = await controller.generate_faq(
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
+        return {"success": True, "task": "faq", "query": result.get("query", ""), "faq": result.get("faq"), "documents": serialize_documents(result.get("documents", []))}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
-
-# ============================================================
-# Key Points
-# ============================================================
+@knowledge_router.post("/mindmap/{project_id}")
+async def knowledge_mindmap(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
+    try:
+        project = await get_project(request, project_id)
+        controller = get_knowledge_controller(request)
+        result = await controller.generate_mindmap(
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
+        )
+        return {"success": True, "task": "mindmap", "query": result.get("query", ""), "mindmap": result.get("mindmap"), "documents": serialize_documents(result.get("documents", []))}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @knowledge_router.post("/key-points/{project_id}")
-async def knowledge_key_points(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_key_points(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.extract_key_points(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "key_points",
-            "query": result["query"],
-            "key_points": result["key_points"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "key_points", "query": result.get("query", ""), "key_points": result.get("key_points"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
-
-
-# ============================================================
-# Notes
-# ============================================================
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @knowledge_router.post("/notes/{project_id}")
-async def knowledge_notes(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_notes(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.create_notes(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "notes",
-            "query": result["query"],
-            "notes": result["notes"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "notes", "query": result.get("query", ""), "notes": result.get("notes"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
-
-
-# ============================================================
-# Flashcards
-# ============================================================
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @knowledge_router.post("/flashcards/{project_id}")
-async def knowledge_flashcards(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_flashcards(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.generate_flashcards(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "flashcards",
-            "query": result["query"],
-            "flashcards": result["flashcards"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "flashcards", "query": result.get("query", ""), "flashcards": result.get("flashcards"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
-
-
-# ============================================================
-# Quiz
-# ============================================================
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
 
 @knowledge_router.post("/quiz/{project_id}")
-async def knowledge_quiz(
-    request: Request,
-    project_id: int,
-    knowledge_request: KnowledgeRequest,
-):
-
+async def knowledge_quiz(request: Request, project_id: int, knowledge_request: KnowledgeRequest):
     try:
-
-        project = await get_project(
-            request=request,
-            project_id=project_id,
-        )
-
+        project = await get_project(request, project_id)
         controller = get_knowledge_controller(request)
-
         result = await controller.generate_quiz(
-            project=project,
-            query=knowledge_request.query,
-            limit=knowledge_request.limit,
-            top_k=knowledge_request.top_k,
-            max_output_tokens=knowledge_request.max_output_tokens,
-            temperature=knowledge_request.temperature,
+            db_client=request.app.db_client, project=project, query=knowledge_request.query or "", 
+            file_id=knowledge_request.file_id, max_output_tokens=knowledge_request.max_output_tokens, temperature=knowledge_request.temperature
         )
-
-        return {
-            "success": True,
-            "task": "quiz",
-            "query": result["query"],
-            "quiz": result["quiz"],
-            "documents": serialize_documents(
-                result.get("documents", [])
-            ),
-        }
-
+        return {"success": True, "task": "quiz", "query": result.get("query", ""), "quiz": result.get("quiz"), "documents": serialize_documents(result.get("documents", []))}
     except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))

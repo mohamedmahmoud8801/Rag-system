@@ -74,3 +74,10 @@ class ExcelSQLIngestRequest(BaseModel):
     # "fail": stop if a table with the same name already exists
     # "replace": drop and recreate tables with the same name
     if_exists: Literal["fail", "replace"] = "fail"
+
+
+
+class SQLEvalRequest(BaseModel):
+    question: str
+    sql_query: str
+    result_data: str 

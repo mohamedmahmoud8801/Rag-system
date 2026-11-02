@@ -1,6 +1,7 @@
-from fastapi import FastAPI, APIRouter, status, Request
+import asyncio
+from fastapi import FastAPI, APIRouter, status, Request,HTTPException
 from fastapi.responses import JSONResponse
-from routes.schemes.nlp import PushRequest, SearchRequest
+from routes.schemes.nlp import PushRequest, SearchRequest,RAGEvalRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 from controllers import NLPController
@@ -18,88 +19,77 @@ nlp_router = APIRouter(
 
 @nlp_router.post("/index/push/{project_id}")
 async def index_project(request: Request, project_id: int, push_request: PushRequest):
+    try:
+        project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+        chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
+        project = await project_model.get_project_or_create_one(project_id=project_id)
 
-    project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
-    )
-
-    chunk_model = await ChunkModel.create_instance(
-        db_client=request.app.db_client
-    )
-
-    project = await project_model.get_project_or_create_one(
-        project_id=project_id
-    )
-
-    if not project:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "signal": ResponseSignal.PROJECT_NOT_FOUND_ERROR.value
-            }
-        )
-    
-    nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        reranker_client=request.app.reranker_client,
-        template_parser=request.app.template_parser,
-    )
-
-    has_records = True
-    page_no = 1
-    inserted_items_count = 0
-    idx = 0
-
-# create collection if not exists
-    colletion_name = nlp_controller.create_collection_name(project_id=project.project_id)
-
-    _ = await request.app.vectordb_client.create_collection(
-        collection_name=colletion_name,
-        embedding_size = request.app.embedding_client.embedding_size,
-        do_reset=push_request.do_reset,
-    )
-# setup batching
-    total_chunks_count = await chunk_model.get_total_chunk_count(project_id=project.project_id)
-    pbar = tqdm(total=total_chunks_count,desc="Vector Indexing",position=0)
-
-    while has_records:
-        page_chunks = await chunk_model.get_project_chunks(project_id=project.project_id, page_no=page_no)
-        if len(page_chunks):
-            page_no += 1
+        if not project:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": ResponseSignal.PROJECT_NOT_FOUND_ERROR.value})
         
-        if not page_chunks or len(page_chunks) == 0:
-            has_records = False
-            break
-
-        chunks_ids =  [c.chunk_id for c in page_chunks]
-        idx += len(page_chunks)
-        
-        is_inserted = await nlp_controller.index_into_vector_db(
-            project=project,
-            chunks=page_chunks,
-            chunks_ids=chunks_ids
+        nlp_controller = NLPController(
+            vectordb_client=request.app.vectordb_client,
+            generation_client=request.app.generation_client,
+            embedding_client=request.app.embedding_client,
+            reranker_client=request.app.reranker_client,
+            template_parser=request.app.template_parser,
         )
 
-        if not is_inserted:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "signal": ResponseSignal.INSERT_INTO_VECTORDB_ERROR.value
-                }
+        has_records = True
+        page_no = 1
+        inserted_items_count = 0
+        idx = 0
+
+        collection_name = nlp_controller.create_collection_name(project_id=project.project_id)
+
+        # 1. إنشاء الـ Collection الأول (عشان الجدول يكون موجود قبل أي قراءة)
+        _ = await request.app.vectordb_client.create_collection(
+            collection_name=collection_name,
+            embedding_size=request.app.embedding_client.embedding_size,
+            do_reset=push_request.do_reset,
+        )
+
+        # 2. محاولة جلب عدد الـ chunks (لو الجدول لسه مش موجود، نكمل من غير total)
+        try:
+            total_chunks_count = await chunk_model.get_total_chunk_count(project_id=project.project_id)
+        except Exception as e:
+            logger.warning(f"[INDEX] Could not get chunk count (table may not be ready yet): {e}")
+            total_chunks_count = 0
+
+        pbar = tqdm(total=total_chunks_count, desc="Vector Indexing", position=0)
+
+        while has_records:
+            page_chunks = await chunk_model.get_project_chunks(project_id=project.project_id, page_no=page_no)
+            if len(page_chunks):
+                page_no += 1
+            
+            if not page_chunks or len(page_chunks) == 0:
+                has_records = False
+                break
+
+            chunks_ids = [c.chunk_id for c in page_chunks]
+            idx += len(page_chunks)
+            
+            is_inserted = await nlp_controller.index_into_vector_db(
+                project=project,
+                chunks=page_chunks,
+                chunks_ids=chunks_ids
             )
-        pbar.update(len(page_chunks))
-        inserted_items_count += len(page_chunks)
-        
-    return JSONResponse(
-        content={
-            "signal": ResponseSignal.INSERT_INTO_VECTORDB_SUCCESS.value,
-            "inserted_items_count": inserted_items_count
-        }
-    )
 
-@nlp_router.get("/index/info/{project_id}")
+            if not is_inserted:
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": ResponseSignal.INSERT_INTO_VECTORDB_ERROR.value})
+            
+            pbar.update(len(page_chunks))
+            inserted_items_count += len(page_chunks)
+            
+        return JSONResponse(content={"signal": ResponseSignal.INSERT_INTO_VECTORDB_SUCCESS.value, "inserted_items_count": inserted_items_count})
+        
+    except asyncio.CancelledError:
+        logger.info(f"🛑 Client disconnected. Cancelled indexing for project {project_id}.")
+        return JSONResponse(status_code=499, content={"signal": "client_closed_request"})
+    except Exception as e:
+        logger.error(f"Error in index_project: {e}")
+        return JSONResponse(status_code=500, content={"signal": "error", "message": str(e)})
 async def get_project_index_info(request: Request, project_id: int):
     
     project_model = await ProjectModel.create_instance(
@@ -169,53 +159,63 @@ async def search_index(request: Request, project_id: int, search_request: Search
 
 @nlp_router.post("/index/answer/{project_id}")
 async def answer_rag(request: Request, project_id: int, search_request: SearchRequest):
-    
-    project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
-    )
+    try:
+        project_model = await ProjectModel.create_instance(
+            db_client=request.app.db_client
+        )
 
+        project = await project_model.get_project_or_create_one(
+            project_id=project_id
+        )
 
-    project = await project_model.get_project_or_create_one(
-        project_id=project_id
-    )
+        nlp_controller = NLPController(
+            vectordb_client=request.app.vectordb_client,
+            generation_client=request.app.generation_client,
+            embedding_client=request.app.embedding_client,
+            reranker_client=request.app.reranker_client,
+            template_parser=request.app.template_parser,
+        )
 
-    nlp_controller = NLPController(
-        
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        reranker_client=request.app.reranker_client,
-        template_parser=request.app.template_parser,
+        answer, full_prompt, chat_history, _contexts, sources = (
+            await nlp_controller.answer_rag_question(
+                db_client=request.app.db_client,
+                project=project,
+                query=search_request.text,
+                limit=search_request.limit,
+                return_contexts=True,
+                file_id = search_request.file_id,
+            )
+        )
 
-    )
-
-    answer, full_prompt, chat_history, _contexts, sources = (
-    await nlp_controller.answer_rag_question(
-        db_client = request.app.db_client,
-        project=project,
-        query=search_request.text,
-        limit=search_request.limit,
-        return_contexts=True,
-    )
-)
-
-    if not answer:
-        return JSONResponse(
+        if not answer:
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
                     "signal": ResponseSignal.RAG_ANSWER_ERROR.value
                 }
+            )
+        
+        return JSONResponse(
+            content={
+                "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
+                "answer": answer,
+                "sources": sources,
+                "full_prompt": full_prompt,
+                "chat_history": chat_history
+            }
         )
-    
-    return JSONResponse(
-    content={
-        "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-        "answer": answer,
-        "sources": sources,
-        "full_prompt": full_prompt,
-        "chat_history": chat_history
-    }
-)
+    except asyncio.CancelledError:
+        logger.info(f"🛑 Client disconnected. Cancelled RAG generation for project {project_id}.")
+        return JSONResponse(
+            status_code=499,
+            content={"signal": "client_closed_request"}
+        )
+    except Exception as e:
+        logger.error(f"Error in answer_rag: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"signal": ResponseSignal.RAG_ANSWER_ERROR.value, "message": str(e)}
+        )
 
 @nlp_router.post("/index/multimodal-answer/{project_id}")
 async def answer_multimodal_rag(
@@ -312,3 +312,41 @@ async def answer_multimodal_rag(
         "answer": answer,
         "documents": analyzed_documents
     }
+
+
+
+
+
+
+@nlp_router.post("/evaluate-rag/{project_id}")
+async def evaluate_rag_general(request: Request, project_id: int, body: RAGEvalRequest):
+    try:
+        generation_client = request.app.generation_client
+        contexts_text = "\n\n".join([f"[{i+1}] {c}" for i, c in enumerate(body.contexts)])
+        
+        prompt = f"""
+أنت خبير تقييم.
+بناءً على:
+1. سؤال المستخدم: {body.question}
+2. إجابة النظام: {body.answer}
+3. النصوص المسترجعة: {contexts_text}
+
+قم بتقييم حاجتين من 0 إلى 100:
+أ) الأمانة (Faithfulness): هل إجابة النظام مستندة على النصوص؟ (100 = كل الكلام في النص، 0 = تأليف).
+ب) الملاءمة (Relevance): هل النصوص المسترجعة تجيب على سؤال المستخدم؟
+
+الرد بصيغة JSON فقط:
+{{"faithfulness": 90, "relevance": 85, "reason": "سبب التقييم"}}
+"""
+        response = generation_client.generate_text(prompt=prompt, temperature=0.0)
+        
+        import json
+        import re
+        cleaned = response.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match: cleaned = match.group(0)
+            
+        parsed = json.loads(cleaned)
+        return {"success": True, "faithfulness": parsed.get("faithfulness", 0), "relevance": parsed.get("relevance", 0), "reason": parsed.get("reason", "")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
