@@ -8,6 +8,7 @@ from routes.schemes.sql import (
     SQLSchemaRequest,
     SQLExecuteRequest,
     SQLQueryRequest,
+    SQLEvalRequest
 )
 
 
@@ -220,3 +221,29 @@ async def ingest_excel(
             status_code=400,
             detail=str(e)
         )
+
+
+
+
+@sql_router.post("/evaluate")
+async def evaluate_sql(request: Request, body: SQLEvalRequest):
+    try:
+        generation_client = request.app.generation_client
+        prompt = f"""
+                أنت خبير SQL. قيّم جودة الاستعلام التالي من 0 إلى 100.
+                السؤال: {body.question}
+                الاستعلام: {body.sql_query}
+                النتيجة: {body.result_data}
+
+                هل الاستعلام صحيح ومنطقي ويجيب على السؤال؟
+                الرد JSON فقط: {{"score": 95, "reason": "السبب"}}
+                """
+        response = generation_client.generate_text(prompt=prompt, temperature=0.0)
+        import json, re
+        cleaned = response.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match: cleaned = match.group(0)
+        parsed = json.loads(cleaned)
+        return {"success": True, "score": parsed.get("score", 0), "reason": parsed.get("reason", "")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

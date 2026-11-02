@@ -115,7 +115,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       api<DBListResponse>(`/api/v1/databases/${projectId}`).then(res => {
         const conns = res.connections || [];
         setDbs(conns);
-        if (conns.length > 0 && !selectedDb) setSelectedDb(conns[0].id);
+        // 👇 ضفنا String() هنا
+        if (conns.length > 0 && !selectedDb) setSelectedDb(String(conns[0].id));
       }).catch(() => {});
     }
   }, [mode, projectId, selectedDb]);
@@ -202,7 +203,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           db_url = `excel://${projectId}`;
           db_provider = "sqlite";
         } else {
-          const conn = dbs.find(d => d.id === selectedDb);
+          const conn = dbs.find(d => String(d.id) === String(selectedDb)); // 👇 ضفنا String() هنا كمان
           if (!conn) throw new Error("Please select a database connection first.");
           db_url = conn.database_url || conn.url || `conn://${conn.id}`;
           db_provider = conn.provider;

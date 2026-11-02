@@ -6,6 +6,8 @@ import { Alert, Button } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { useChat } from "@/hooks/chat";
 import { useData } from "@/hooks/data";
+import { useProject } from "@/hooks/project";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const auto = (Tag: ElementType) => ({ node: _node, ...props }: { node?: unknown } & HTMLAttributes<HTMLElement>) => <Tag {...props} dir="auto" />;
@@ -36,8 +38,43 @@ function SourceCards({ sources }: { sources: any[] }) {
   );
 }
 
-function AssistantMessage({ message, onRetry }: { message: any; onRetry?: () => void }) {
+function AssistantMessage({ message, onRetry, question }: { message: any; onRetry?: () => void; question?: string }) {
   const { t } = useI18n();
+  const { projectId } = useProject();
+  const [evalResult, setEvalResult] = useState<any>(null);
+  const [evaluating, setEvaluating] = useState(false);
+
+  const isSql = message.content.includes("**Generated SQL:**");
+
+  const handleEvaluate = async () => {
+    if (!question) return;
+    setEvaluating(true);
+    try {
+      let newRecord = {};
+      if (isSql) {
+        const sqlMatch = message.content.match(/```sql\n([\s\S]*?)\n```/);
+        const sqlQuery = sqlMatch ? sqlMatch[1] : "";
+        const res = await api<any>(`/sql/evaluate`, { body: { question, sql_query: sqlQuery, result_data: message.content } });
+        setEvalResult({ score: res.score, reason: res.reason, type: "sql" });
+        newRecord = { question, answer: message.content, score: res.score, reason: res.reason, type: "sql", date: Date.now() };
+      } else {
+        const contexts = (message.sources || []).map((s: any) => s.snippet || s.file_name).filter(Boolean);
+        const res = await api<any>(`/api/v1/nlp/evaluate-rag/${projectId}`, { body: { question, answer: message.content, contexts } });
+        setEvalResult({ faith: res.faithfulness, rel: res.relevance, reason: res.reason, type: "rag" });
+        newRecord = { question, answer: message.content, faithfulness: res.faithfulness, relevance: res.relevance, reason: res.reason, type: "rag", date: Date.now() };
+      }
+      
+      // 👇 حفظ النتيجة عشان تظهر في صفحة التقييم (Dashboard)
+      const existing = JSON.parse(localStorage.getItem("rag.eval_history") || "[]");
+      localStorage.setItem("rag.eval_history", JSON.stringify([newRecord, ...existing]));
+
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      setEvaluating(false); 
+    }
+  };
+
   return (
     <div className="flex gap-3.5 animate-fade-in">
       <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-card text-primary">
@@ -59,6 +96,27 @@ function AssistantMessage({ message, onRetry }: { message: any; onRetry?: () => 
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{message.content}</ReactMarkdown>
             </div>
             {message.sources && message.sources.length > 0 && <SourceCards sources={message.sources} />}
+            
+            <div className="mt-3 flex items-center gap-3 border-t border-border/50 pt-3">
+              {!evalResult ? (
+                <button onClick={handleEvaluate} disabled={evaluating || !question} className="text-[12px] font-medium text-primary hover:underline flex items-center gap-1.5 disabled:opacity-50">
+                  {evaluating ? "جاري التقييم..." : "تقييم دقة الإجابة"}
+                </button>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-elevated/40 p-2 px-3 text-[12px] animate-fade-in">
+                  <span className="font-semibold text-foreground">التقييم:</span>
+                  {evalResult.type === "rag" ? (
+                    <>
+                      <span>الأمانة <strong className={evalResult.faith >= 70 ? "text-success" : "text-danger"}>{evalResult.faith}%</strong></span>
+                      <span>الملاءمة <strong className={evalResult.rel >= 70 ? "text-success" : "text-danger"}>{evalResult.rel}%</strong></span>
+                    </>
+                  ) : (
+                    <span>الدقة <strong className={evalResult.score >= 70 ? "text-success" : "text-danger"}>{evalResult.score}%</strong></span>
+                  )}
+                  <span className="text-muted max-w-[250px] truncate" title={evalResult.reason}>{evalResult.reason}</span>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -69,7 +127,6 @@ function AssistantMessage({ message, onRetry }: { message: any; onRetry?: () => 
 function Thinking({ multimodal }: { multimodal: boolean }) {
   const { t } = useI18n();
   const [seconds, setSeconds] = useState(0);
-
   useEffect(() => {
     const id = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(id);
@@ -97,11 +154,9 @@ export default function Chat() {
   const { t, locale } = useI18n();
   const { sessions, currentId, setCurrentId, messages, newChat, loading, mode, setMode, ask, stop, dbs, selectedDb, setSelectedDb } = useChat();
   const { files } = useData();
-
   const [input, setInput] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [targetFile, setTargetFile] = useState<string>("");
-  
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -145,13 +200,11 @@ export default function Chat() {
           <h1 className="text-[22px] font-semibold tracking-tight">{t("chat.title")}</h1>
           <p className="text-[13px] text-muted">{t("chat.subtitle")}</p>
         </div>
-
         <div className="flex items-center gap-2 relative">
           <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium outline-none hover:bg-elevated/60 transition-colors">
             <span className="max-w-[120px] truncate sm:max-w-[200px]">{currentSession?.title || "New Chat"}</span>
             <ChevronDown className="size-4 text-muted" />
           </button>
-
           {showHistory && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowHistory(false)} />
@@ -168,7 +221,6 @@ export default function Chat() {
               </div>
             </>
           )}
-
           <Button variant="secondary" size="sm" onClick={newChat} className="px-2 sm:px-3">
             <MessageSquarePlus className="size-4 sm:me-1.5" />
             <span className="hidden sm:inline">{t("chat.new")}</span>
@@ -193,11 +245,7 @@ export default function Chat() {
         </div>
 
         {mode === "rag" && files.length > 0 && (
-          <select 
-            value={targetFile} 
-            onChange={(e) => setTargetFile(e.target.value)} 
-            className="h-8 max-w-[180px] sm:max-w-[250px] truncate rounded-lg border border-primary/40 bg-primary/5 px-2 text-xs font-medium text-primary outline-none hover:bg-primary/10"
-          >
+          <select value={targetFile} onChange={(e) => setTargetFile(e.target.value)} className="h-8 max-w-[180px] sm:max-w-[250px] truncate rounded-lg border border-primary/40 bg-primary/5 px-2 text-xs font-medium text-primary outline-none hover:bg-primary/10">
             <option value="">كل الملفات (شامل)</option>
             {files.map(f => <option key={f.file_id} value={f.file_id}>{f.name}</option>)}
           </select>
@@ -218,7 +266,12 @@ export default function Chat() {
                 <div dir="auto" className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-ee-md bg-primary px-4 py-3 text-[15px] leading-relaxed text-white selection:bg-white/30 selection:text-white">{message.content}</div>
               </div>
             ) : (
-              <AssistantMessage key={message.id} message={message} onRetry={message.error && index === messages.length - 1 && lastQuestion ? () => ask(lastQuestion, targetFile || undefined) : undefined} />
+              <AssistantMessage 
+                key={message.id} 
+                message={message} 
+                question={messages[index - 1]?.content} 
+                onRetry={message.error && index === messages.length - 1 && lastQuestion ? () => ask(lastQuestion, targetFile || undefined) : undefined} 
+              />
             ),
           )
         )}

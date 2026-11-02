@@ -1,7 +1,7 @@
 import asyncio
-from fastapi import FastAPI, APIRouter, status, Request
+from fastapi import FastAPI, APIRouter, status, Request,HTTPException
 from fastapi.responses import JSONResponse
-from routes.schemes.nlp import PushRequest, SearchRequest
+from routes.schemes.nlp import PushRequest, SearchRequest,RAGEvalRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 from controllers import NLPController
@@ -312,3 +312,41 @@ async def answer_multimodal_rag(
         "answer": answer,
         "documents": analyzed_documents
     }
+
+
+
+
+
+
+@nlp_router.post("/evaluate-rag/{project_id}")
+async def evaluate_rag_general(request: Request, project_id: int, body: RAGEvalRequest):
+    try:
+        generation_client = request.app.generation_client
+        contexts_text = "\n\n".join([f"[{i+1}] {c}" for i, c in enumerate(body.contexts)])
+        
+        prompt = f"""
+أنت خبير تقييم.
+بناءً على:
+1. سؤال المستخدم: {body.question}
+2. إجابة النظام: {body.answer}
+3. النصوص المسترجعة: {contexts_text}
+
+قم بتقييم حاجتين من 0 إلى 100:
+أ) الأمانة (Faithfulness): هل إجابة النظام مستندة على النصوص؟ (100 = كل الكلام في النص، 0 = تأليف).
+ب) الملاءمة (Relevance): هل النصوص المسترجعة تجيب على سؤال المستخدم؟
+
+الرد بصيغة JSON فقط:
+{{"faithfulness": 90, "relevance": 85, "reason": "سبب التقييم"}}
+"""
+        response = generation_client.generate_text(prompt=prompt, temperature=0.0)
+        
+        import json
+        import re
+        cleaned = response.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match: cleaned = match.group(0)
+            
+        parsed = json.loads(cleaned)
+        return {"success": True, "faithfulness": parsed.get("faithfulness", 0), "relevance": parsed.get("relevance", 0), "reason": parsed.get("reason", "")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

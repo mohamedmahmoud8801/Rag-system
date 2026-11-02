@@ -1,160 +1,136 @@
-import { useRef } from "react";
-import { Download, Play, Upload, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Activity, Target, Database, ShieldAlert, BarChart3, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
-import { Alert, Badge, Button, Card } from "@/components/ui";
-import { useProject } from "@/hooks/project";
-import { useI18n } from "@/i18n";
-import { useEvaluation } from "@/hooks/evaluation";
+import { Badge, Button, Card } from "@/components/ui";
+
+interface EvalRecord {
+  question: string;
+  answer: string;
+  type: "rag" | "sql";
+  faithfulness?: number;
+  relevance?: number;
+  score?: number;
+  reason: string;
+  date: number;
+}
 
 export default function Evaluation() {
-  const { t } = useI18n();
-  const { projectId } = useProject();
-  const { items, results, running, progress, loadFile, runAll, reset } = useEvaluation();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [history, setHistory] = useState<EvalRecord[]>([]);
 
-  function exportJson() {
-    const blob = new Blob([JSON.stringify({ project: projectId, results }, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `eval_${projectId}_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("rag.eval_history") || "[]");
+      setHistory(saved);
+    } catch { }
+  }, []);
 
-  function exportCsv() {
-    const rows: string[][] = [["#", "question", "expected", "answer", "seconds", "error"]];
-    results.forEach((r, i) =>
-      rows.push([String(i + 1), r.question, r.expected ?? "", r.answer, String(r.seconds), r.error ?? ""]),
-    );
-    const csv = rows.map((row) => row.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `eval_${projectId}_${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const clearHistory = () => {
+    localStorage.removeItem("rag.eval_history");
+    setHistory([]);
+  };
 
-  const avgTime = results.length ? (results.reduce((s, r) => s + r.seconds, 0) / results.length).toFixed(1) : "0";
-  const failCount = results.filter((r) => r.error).length;
+  const ragResults = history.filter(r => r.type === "rag" && r.faithfulness !== undefined && r.relevance !== undefined);
+  const sqlResults = history.filter(r => r.type === "sql" && r.score !== undefined);
+
+  const avgFaith = ragResults.length ? (ragResults.reduce((a, b) => a + (b.faithfulness || 0), 0) / ragResults.length).toFixed(1) : "0";
+  const avgRel = ragResults.length ? (ragResults.reduce((a, b) => a + (b.relevance || 0), 0) / ragResults.length).toFixed(1) : "0";
+  const avgSql = sqlResults.length ? (sqlResults.reduce((a, b) => a + (b.score || 0), 0) / sqlResults.length).toFixed(1) : "0";
 
   return (
     <Page wide>
-      <PageHeader title={t("eval.title")} subtitle={t("eval.subtitle")} />
+      <PageHeader 
+        title="لوحة تقييم النظام (Dashboard)" 
+        subtitle="نظرة عامة على أداء الـ RAG والـ SQL بناءً على تقييماتك في المحادثة."
+        actions={
+          history.length > 0 && (
+            <Button variant="danger" size="sm" onClick={clearHistory}>
+              <Trash2 className="size-4" /> مسح السجل
+            </Button>
+          )
+        }
+      />
 
-      <Card className="mb-4 p-5">
-        <div
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); loadFile(e.dataTransfer.files[0] ?? null); }}
-          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-background/40 px-6 py-8 text-center hover:border-primary/50 hover:bg-primary-soft/30"
-        >
-          <Upload className="size-5 text-primary" />
-          <p className="text-sm font-medium">{t("eval.upload")}</p>
-          <p className="text-xs text-muted">{t("eval.upload.hint")}</p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".json"
-            hidden
-            onChange={(e) => { loadFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
-          />
+      {/* كروت الإحصائيات */}
+      <div className="grid gap-4 sm:grid-cols-3 mb-8">
+        <Card className="p-6 bg-gradient-to-br from-card to-background border-success/30 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><ShieldAlert className="size-20" /></div>
+          <div className="flex items-center gap-3 mb-2 relative z-10">
+            <span className="grid size-10 place-items-center rounded-xl bg-success/15 text-success"><ShieldAlert className="size-5" /></span>
+            <h3 className="text-sm font-semibold">أمانة الـ RAG (Faithfulness)</h3>
+          </div>
+          <p className="text-4xl font-bold relative z-10">{avgFaith}%</p>
+          <p className="text-xs text-muted mt-2 relative z-10">متوسط التزام الموديل بالنصوص المسترجعة (بدون هلوسة).</p>
+        </Card>
+        
+        <Card className="p-6 bg-gradient-to-br from-card to-background border-primary/30 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Target className="size-20" /></div>
+          <div className="flex items-center gap-3 mb-2 relative z-10">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary/15 text-primary"><Target className="size-5" /></span>
+            <h3 className="text-sm font-semibold">ملاءمة الـ RAG (Relevance)</h3>
+          </div>
+          <p className="text-4xl font-bold relative z-10">{avgRel}%</p>
+          <p className="text-xs text-muted mt-2 relative z-10">متوسط دقة النصوص اللي رجعت من الـ Vector DB.</p>
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-card to-background border-warning/30 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Database className="size-20" /></div>
+          <div className="flex items-center gap-3 mb-2 relative z-10">
+            <span className="grid size-10 place-items-center rounded-xl bg-warning/15 text-warning"><Database className="size-5" /></span>
+            <h3 className="text-sm font-semibold">دقة الـ Text-to-SQL</h3>
+          </div>
+          <p className="text-4xl font-bold relative z-10">{avgSql}%</p>
+          <p className="text-xs text-muted mt-2 relative z-10">متوسط جودة استعلامات الـ SQL المكتوبة.</p>
+        </Card>
+      </div>
+
+      {/* سجل التقييمات */}
+      <Card>
+        <div className="border-b border-border px-5 py-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Activity className="size-4 text-primary" /> سجل التقييمات الأخيرة</h3>
+          <Badge tone="primary">{history.length} سؤال</Badge>
         </div>
-
-        {items.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <Badge tone="primary">{items.length} {t("eval.items")}</Badge>
-            <Button size="sm" onClick={runAll} loading={running} disabled={running}>
-              <Play className="size-4" /> {t("eval.run")}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={reset} disabled={running}>
-              <X className="size-4" /> {t("eval.reset")}
-            </Button>
-            {results.length > 0 && (
-              <>
-                <Button size="sm" variant="secondary" onClick={exportJson}><Download className="size-4" /> JSON</Button>
-                <Button size="sm" variant="secondary" onClick={exportCsv}><Download className="size-4" /> CSV</Button>
-              </>
-            )}
+        
+        {history.length === 0 ? (
+          <div className="p-12 text-center text-muted flex flex-col items-center">
+            <BarChart3 className="size-12 mb-4 opacity-20" />
+            <p className="text-lg font-medium">لا يوجد تقييمات بعد</p>
+            <p className="text-sm mt-1">اذهب إلى صفحة المحادثة، واضغط على "تقييم دقة الإجابة" تحت أي رد لتظهر النتائج هنا.</p>
           </div>
-        )}
-
-        {running && (
-          <div className="mt-3">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-border">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-muted">{progress.done} / {progress.total}</p>
-          </div>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {history.map((r, i) => (
+              <li key={i} className="p-5 flex flex-col gap-3 hover:bg-elevated/20 transition-colors">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold" dir="auto">{r.question}</p>
+                  
+                  {/* شارات التقييم */}
+                  <div className="flex items-center gap-2">
+                    {r.type === "sql" ? (
+                      <Badge tone={r.score! >= 70 ? "success" : "danger"} className="text-xs px-2.5 py-1">
+                        {r.score! >= 70 ? <CheckCircle2 className="size-3 me-1"/> : <AlertCircle className="size-3 me-1"/>}
+                        SQL: {r.score}%
+                      </Badge>
+                    ) : (
+                      <>
+                        <Badge tone={r.faithfulness! >= 70 ? "success" : "danger"} className="text-xs px-2.5 py-1">
+                          أمانة: {r.faithfulness}%
+                        </Badge>
+                        <Badge tone={r.relevance! >= 70 ? "success" : "danger"} className="text-xs px-2.5 py-1">
+                          ملاءمة: {r.relevance}%
+                        </Badge>
+                      </>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="text-xs text-muted flex items-center gap-1.5 bg-background/40 p-2 rounded-lg w-fit">
+                  <span className="font-semibold text-foreground">تقييم الموديل:</span> {r.reason}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
-
-      {results.length > 0 && (
-        <Card className="mb-4 p-4">
-          <div className="grid gap-2 text-sm sm:grid-cols-3">
-            <Stat label={t("eval.stat.count")} value={String(results.length)} />
-            <Stat label={t("eval.stat.avg")} value={`${avgTime}s`} />
-            <Stat label={t("eval.stat.fail")} value={String(failCount)} tone={failCount ? "danger" : "success"} />
-          </div>
-        </Card>
-      )}
-
-      {items.length === 0 && <Alert>{t("eval.empty.hint")}</Alert>}
-
-      <div className="space-y-3">
-        {results.map((r, i) => (
-          <Card key={i} className="p-4">
-            <div className="mb-2 flex items-start gap-2">
-              <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary/15 text-[11px] font-semibold text-primary">
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold" dir="auto">{r.question}</p>
-                <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-                  <Badge>{r.seconds}s</Badge>
-                  {r.error ? <Badge tone="danger">{t("eval.failed")}</Badge> : <Badge tone="success">{r.sources.length} {t("chat.sources")}</Badge>}
-                </div>
-              </div>
-            </div>
-            {r.expected && (
-              <div className="mb-2 rounded-lg bg-elevated/40 p-2.5">
-                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted">{t("eval.expected")}</p>
-                <p className="text-sm" dir="auto">{r.expected}</p>
-              </div>
-            )}
-            <div className="rounded-lg bg-background/40 p-2.5">
-              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted">{t("eval.actual")}</p>
-              {r.error
-                ? <p className="text-sm text-danger" dir="auto">{r.error}</p>
-                : <p className="whitespace-pre-wrap text-sm" dir="auto">{r.answer}</p>}
-            </div>
-            {r.sources.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {r.sources.slice(0, 6).map((s, j) => (
-                  <span key={j} className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px]" dir="ltr">
-                    {s.file_name}{s.page ? ` · p${s.page}` : ""}
-                  </span>
-                ))}
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
     </Page>
-  );
-}
-
-function Stat({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "success" | "danger" }) {
-  const color = tone === "danger" ? "text-danger" : tone === "success" ? "text-success" : "text-foreground";
-  return (
-    <div className="rounded-lg border border-border bg-background/40 p-3">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`text-lg font-semibold ${color}`}>{value}</p>
-    </div>
   );
 }

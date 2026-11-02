@@ -16,9 +16,11 @@ interface EvaluationState {
   results: EvalResult[];
   running: boolean;
   progress: { done: number; total: number };
-  loadFile: (file: File | null) => Promise<void>;
   loadItems: (items: GoldenItem[]) => void;
-  runAll: () => Promise<void>;
+  addItem: (item: GoldenItem) => void;
+  updateItem: (index: number, item: GoldenItem) => void;
+  removeItem: (index: number) => void;
+  runAll: (fileId?: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -33,31 +35,12 @@ export function EvaluationProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const abortRef = useRef(false);
 
-  const loadItems = (next: GoldenItem[]) => {
-    setItems(next);
-    setResults([]);
-    setProgress({ done: 0, total: 0 });
-  };
+  const loadItems = (next: GoldenItem[]) => { setItems(next); setResults([]); setProgress({ done: 0, total: 0 }); };
+  const addItem = (item: GoldenItem) => setItems(prev => [...prev, item]);
+  const updateItem = (index: number, item: GoldenItem) => setItems(prev => prev.map((x, i) => i === index ? item : x));
+  const removeItem = (index: number) => setItems(prev => prev.filter((_, i) => i !== index));
 
-  const loadFile = async (file: File | null) => {
-    if (!file) return;
-    const text = await file.text();
-    try {
-      const parsed = JSON.parse(text);
-      const list = Array.isArray(parsed) ? parsed : parsed.questions ?? parsed.items ?? [];
-      const normalized: GoldenItem[] = list
-        .map((x: Record<string, unknown>) => ({
-          question: String(x.question ?? x.q ?? x.query ?? ""),
-          expected: (x.expected ?? x.answer ?? x.a ?? x.ground_truth) as string | undefined,
-        }))
-        .filter((x: GoldenItem) => x.question);
-      loadItems(normalized);
-    } catch {
-      loadItems([]);
-    }
-  };
-
-  const runAll = async () => {
+  const runAll = async (fileId?: string) => {
     if (!items.length || running) return;
     abortRef.current = false;
     setRunning(true);
@@ -71,7 +54,7 @@ export function EvaluationProvider({ children }: { children: ReactNode }) {
       try {
         const res = await api<{ answer: string; sources?: EvalResult["sources"] }>(
           `/api/v1/nlp/index/answer/${projectId}`,
-          { body: { text: item.question, limit: 10 } },
+          { body: { text: item.question, limit: 10, file_id: fileId } }, // 👈 ضفنا file_id
         );
         out.push({
           ...item,
@@ -103,7 +86,7 @@ export function EvaluationProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ items, results, running, progress, loadFile, loadItems, runAll, reset }}>
+    <Ctx.Provider value={{ items, results, running, progress, loadItems, addItem, updateItem, removeItem, runAll, reset }}>
       {children}
     </Ctx.Provider>
   );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet, Play, Plus, Server, Sparkles, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Play, Plus, Server, Sparkles, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
 import { Alert, Badge, Button, Card, Input, Segmented, Spinner } from "@/components/ui";
 import { useProject } from "@/hooks/project";
@@ -53,7 +53,6 @@ export default function Databases() {
 
   const active = targets.find((x) => x.id === activeTargetId) ?? targets[0];
 
-  // Sync provider's activeTargetId with the resolved active target
   if (active && active.id !== activeTargetId) {
     setActiveTargetId(active.id);
   }
@@ -232,6 +231,26 @@ function QueryPanel({ target }: { target: Target }) {
     raw, setRaw, er, executing, error, ask, exec,
   } = useDatabases();
 
+  // 👇 State الخاصة بالتقييم
+  const [evalResult, setEvalResult] = useState<any>(null);
+  const [evaluating, setEvaluating] = useState(false);
+
+  const handleEvaluate = async () => {
+    if (!question || !qr?.sql) return;
+    setEvaluating(true);
+    try {
+      const resData = JSON.stringify(qr.result?.rows || []);
+      const res = await api<any>(`/sql/evaluate`, {
+        body: { question, sql_query: qr.sql, result_data: resData }
+      });
+      setEvalResult(res);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
   return (
     <div className="space-y-4 p-5">
       <div className="max-w-xs">
@@ -285,6 +304,21 @@ function QueryPanel({ target }: { target: Target }) {
           </div>
           {qr.warning && <Alert>{qr.warning}</Alert>}
           <ResultsTable columns={qr.result.columns} rows={qr.result.rows} />
+          
+          {/* 👇 زرار التقييم بيظهر هنا تحت النتيجة */}
+          <div className="mt-4 flex items-center gap-3 border-t border-border/50 pt-4">
+            {!evalResult ? (
+              <button onClick={handleEvaluate} disabled={evaluating || !question} className="text-[13px] font-medium text-primary hover:underline flex items-center gap-1.5 disabled:opacity-50">
+                {evaluating ? "جاري التقييم..." : "تقييم دقة الاستعلام"}
+              </button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg bg-elevated/40 p-2 px-3 text-[12px] animate-fade-in border border-border">
+                <span className="font-semibold text-foreground">التقييم:</span>
+                <span className="flex items-center gap-1">الدقة <strong className={evalResult.score >= 70 ? "text-success" : "text-danger"}>{evalResult.score}%</strong></span>
+                <span className="text-muted max-w-[250px] truncate" title={evalResult.reason}>{evalResult.reason}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {er && <ResultsTable columns={er.columns} rows={er.rows} />}
