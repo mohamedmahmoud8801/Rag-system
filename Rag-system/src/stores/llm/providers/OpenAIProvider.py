@@ -35,12 +35,15 @@ class OpenAIProvider(LLMInterface):
         self.generation_timeout = generation_timeout
 
 
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.api_url,
-            timeout=self.generation_timeout,
-            max_retries=0,
-        )
+        client_kwargs = {
+            "api_key": self.api_key,
+            "timeout": self.generation_timeout,
+            "max_retries": 2,
+        }
+        if self.api_url and self.api_url.strip():
+            client_kwargs["base_url"] = self.api_url
+
+        self.client = OpenAI(**client_kwargs)
 
         self.enums = OpenAIEnums
         self.logger = logging.getLogger(__name__)

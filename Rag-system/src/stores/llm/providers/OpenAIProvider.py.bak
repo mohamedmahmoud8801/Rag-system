@@ -1,6 +1,6 @@
 from ..LLMInterface import LLMInterface
 from ..LLMEnums import OpenAIEnums
-from openai import OpenAI
+from langfuse.openai import OpenAI
 import logging
 from typing import List, Union
 

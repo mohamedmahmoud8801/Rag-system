@@ -29,7 +29,8 @@ from datasets import Dataset
 from dotenv import load_dotenv
 load_dotenv()
 
-from openai import OpenAI
+
+from langfuse.openai import OpenAI
 from ragas import evaluate
 from ragas.llms import llm_factory
 from ragas.metrics import ContextPrecision, ContextRecall, Faithfulness
@@ -56,8 +57,7 @@ EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_DATASET = EVAL_DIR / "datasets" / "rag_golden_questions_42.json"
 RESULTS_DIR = EVAL_DIR / "results"
 
-JUDGE_MODEL = os.getenv("RAGAS_JUDGE_MODEL", "qwen2.5:7b-instruct")
-JUDGE_URL = os.getenv("RAGAS_JUDGE_URL", "http://localhost:11434/v1")
+JUDGE_MODEL = os.getenv("RAGAS_JUDGE_MODEL", "gpt-4o-mini")
 
 CALL_TIMEOUT = 7200.0   # per judge HTTP call
 JOB_TIMEOUT = 14400      # per RAGAS job
@@ -217,10 +217,9 @@ def normalize_contexts(contexts):
 
 def build_judge_client():
     return OpenAI(
-        base_url=JUDGE_URL,
-        api_key="ollama",
+        api_key=os.environ["OPENAI_API_KEY"],
         timeout=httpx.Timeout(CALL_TIMEOUT, connect=10.0),
-        max_retries=0,
+        max_retries=2,
     )
 
 
@@ -565,7 +564,7 @@ async def main(args):
 
         print()
         print("Per-question scores:")
-        print(df[["id", "category"] + score_cols].to_string(index=False))
+        print(df[score_cols].round(3).to_string(index=False))
 
         if df["category"].nunique() > 1:
             print()
