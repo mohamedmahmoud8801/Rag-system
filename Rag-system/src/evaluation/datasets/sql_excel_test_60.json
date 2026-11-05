@@ -1,0 +1,422 @@
+[
+  {
+    "id": "XL-001",
+    "category": "بسيط",
+    "question": "كم عدد الموظفين في الشركة؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-002",
+    "category": "بسيط",
+    "question": "اعرض أسماء جميع الموظفين.",
+    "gold_sql": "SELECT full_name FROM employees ORDER BY full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-003",
+    "category": "بسيط",
+    "question": "اعرض الموظفين الذين يعملون في الرياض.",
+    "gold_sql": "SELECT full_name FROM employees WHERE city = 'Riyadh' ORDER BY full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-004",
+    "category": "بسيط",
+    "question": "اعرض الموظفين الذين يعملون في القاهرة.",
+    "gold_sql": "SELECT full_name FROM employees WHERE city = 'Cairo' ORDER BY full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-005",
+    "category": "بسيط",
+    "question": "اعرض الموظفين الذين يعملون في جدة.",
+    "gold_sql": "SELECT full_name FROM employees WHERE city = 'Jeddah' ORDER BY full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-006",
+    "category": "بسيط",
+    "question": "اعرض الموظفين الذين يعملون في الدمام.",
+    "gold_sql": "SELECT full_name FROM employees WHERE city = 'Dammam' ORDER BY full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-007",
+    "category": "بسيط",
+    "question": "اعرض أسماء جميع الأقسام.",
+    "gold_sql": "SELECT department_name FROM departments ORDER BY department_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-008",
+    "category": "بسيط",
+    "question": "اعرض أسماء جميع المنتجات وفئاتها.",
+    "gold_sql": "SELECT product_name, category FROM products ORDER BY product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-009",
+    "category": "بسيط",
+    "question": "اعرض أسماء المنتجات التي يزيد سعرها عن 1000.",
+    "gold_sql": "SELECT product_name FROM products WHERE unit_price > 1000 ORDER BY product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-010",
+    "category": "بسيط",
+    "question": "كم عدد المنتجات في فئة الإلكترونيات؟",
+    "gold_sql": "SELECT COUNT(*) FROM products WHERE category = 'Electronics';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-011",
+    "category": "تجميع",
+    "question": "ما هو متوسط الرواتب؟",
+    "gold_sql": "SELECT ROUND(AVG(salary), 2) FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-012",
+    "category": "تجميع",
+    "question": "ما هو أعلى راتب في الشركة؟",
+    "gold_sql": "SELECT MAX(salary) FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-013",
+    "category": "تجميع",
+    "question": "ما هو أقل راتب في الشركة؟",
+    "gold_sql": "SELECT MIN(salary) FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-014",
+    "category": "تجميع",
+    "question": "ما هو أعلى وأقل راتب في الشركة معًا؟",
+    "gold_sql": "SELECT MAX(salary) AS max_salary, MIN(salary) AS min_salary FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-015",
+    "category": "تجميع",
+    "question": "ما إجمالي تكلفة الرواتب في الشركة؟",
+    "gold_sql": "SELECT SUM(salary) FROM employees;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-016",
+    "category": "تجميع",
+    "question": "ما إجمالي الإيرادات من جميع عمليات البيع؟",
+    "gold_sql": "SELECT ROUND(SUM(s.quantity * p.unit_price), 2) FROM sales s JOIN products p ON s.product_id = p.product_id;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-017",
+    "category": "تجميع",
+    "question": "ما إجمالي الكمية المباعة في جميع العمليات؟",
+    "gold_sql": "SELECT SUM(quantity) FROM sales;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-018",
+    "category": "تجميع",
+    "question": "ما متوسط سعر الوحدة لجميع المنتجات؟",
+    "gold_sql": "SELECT ROUND(AVG(unit_price), 2) FROM products;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-019",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا ليس لديه بريد إلكتروني مسجّل؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE email IS NULL;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-020",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا لديه بريد إلكتروني مسجّل؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE email IS NOT NULL;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-021",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا تم تعيينهم بعد 2024-01-01؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE hire_date > '2024-01-01';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-022",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا راتبه بين 9000 و11000 (شاملة الحدود)؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE salary BETWEEN 9000 AND 11000;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-023",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا راتبه أقل من 8000؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE salary < 8000;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-024",
+    "category": "عدّ بشرط",
+    "question": "كم موظفًا تم تعيينهم في عام 2023؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE strftime('%Y', hire_date) = '2023';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-025",
+    "category": "تجميع حسب عمود",
+    "question": "كم عدد الموظفين في كل مدينة؟",
+    "gold_sql": "SELECT city, COUNT(*) AS n FROM employees GROUP BY city ORDER BY n DESC, city;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-026",
+    "category": "تجميع حسب عمود",
+    "question": "ما متوسط الراتب في كل مدينة؟",
+    "gold_sql": "SELECT city, ROUND(AVG(salary), 2) AS avg_salary FROM employees GROUP BY city ORDER BY avg_salary DESC, city;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-027",
+    "category": "تجميع حسب عمود",
+    "question": "ما إجمالي تكلفة الرواتب في كل مدينة؟",
+    "gold_sql": "SELECT city, SUM(salary) AS total_salary FROM employees GROUP BY city ORDER BY total_salary DESC, city;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-028",
+    "category": "تجميع حسب عمود",
+    "question": "كم عملية بيع تمت في كل منطقة؟",
+    "gold_sql": "SELECT region, COUNT(*) AS n FROM sales GROUP BY region ORDER BY n DESC, region;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-029",
+    "category": "تجميع حسب عمود",
+    "question": "كم عدد المنتجات في كل فئة؟",
+    "gold_sql": "SELECT category, COUNT(*) AS n FROM products GROUP BY category ORDER BY n DESC, category;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-030",
+    "category": "تجميع حسب عمود",
+    "question": "ما متوسط سعر الوحدة لكل فئة منتجات؟",
+    "gold_sql": "SELECT category, ROUND(AVG(unit_price), 2) AS avg_price FROM products GROUP BY category ORDER BY avg_price DESC, category;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-031",
+    "category": "تجميع حسب عمود",
+    "question": "كم منتجًا مختلفًا بيع في كل منطقة؟",
+    "gold_sql": "SELECT region, COUNT(DISTINCT product_id) AS n FROM sales GROUP BY region ORDER BY region;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-032",
+    "category": "تجميع حسب عمود",
+    "question": "ما متوسط الكمية في عملية البيع الواحدة لكل منطقة؟",
+    "gold_sql": "SELECT region, ROUND(AVG(quantity), 2) AS avg_qty FROM sales GROUP BY region ORDER BY region;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-033",
+    "category": "ربط",
+    "question": "كم عدد الموظفين في كل قسم؟",
+    "gold_sql": "SELECT d.department_name, COUNT(*) AS n FROM employees e JOIN departments d ON e.department_id = d.department_id GROUP BY d.department_name ORDER BY n DESC, d.department_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-034",
+    "category": "ربط",
+    "question": "ما متوسط الراتب في كل قسم؟",
+    "gold_sql": "SELECT d.department_name, ROUND(AVG(e.salary), 2) AS avg_salary FROM employees e JOIN departments d ON e.department_id = d.department_id GROUP BY d.department_name ORDER BY avg_salary DESC, d.department_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-035",
+    "category": "ربط",
+    "question": "اعرض موظفي قسم الهندسة الذين يزيد راتبهم عن 15000.",
+    "gold_sql": "SELECT e.full_name, e.salary FROM employees e JOIN departments d ON e.department_id = d.department_id WHERE d.department_name = 'Engineering' AND e.salary > 15000 ORDER BY e.salary DESC, e.full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-036",
+    "category": "ربط",
+    "question": "ما الإيرادات لكل فئة منتجات؟",
+    "gold_sql": "SELECT p.category, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY p.category ORDER BY revenue DESC, p.category;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-037",
+    "category": "ربط",
+    "question": "ما الإيرادات لكل منطقة؟",
+    "gold_sql": "SELECT s.region, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY s.region ORDER BY revenue DESC, s.region;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-038",
+    "category": "ربط",
+    "question": "ما الإيرادات لكل منتج؟",
+    "gold_sql": "SELECT p.product_name, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY p.product_name ORDER BY revenue DESC, p.product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-039",
+    "category": "ربط",
+    "question": "ما الإيرادات لكل موظف؟",
+    "gold_sql": "SELECT e.full_name, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id JOIN employees e ON s.employee_id = e.employee_id GROUP BY e.full_name ORDER BY revenue DESC, e.full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-040",
+    "category": "ربط",
+    "question": "ما الإيرادات حسب المنطقة وفئة المنتج؟",
+    "gold_sql": "SELECT s.region, p.category, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY s.region, p.category ORDER BY s.region, p.category;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-041",
+    "category": "ربط",
+    "question": "ما إجمالي الكمية المباعة لكل منتج؟",
+    "gold_sql": "SELECT p.product_name, SUM(s.quantity) AS units FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY p.product_name ORDER BY units DESC, p.product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-042",
+    "category": "ربط",
+    "question": "ما إجمالي الكمية المباعة من منتجات فئة الأثاث؟",
+    "gold_sql": "SELECT SUM(s.quantity) FROM sales s JOIN products p ON s.product_id = p.product_id WHERE p.category = 'Furniture';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-043",
+    "category": "غياب علاقة",
+    "question": "ما الأقسام التي لا يوجد بها موظفون؟",
+    "gold_sql": "SELECT department_name FROM departments WHERE department_id NOT IN (SELECT department_id FROM employees);",
+    "order_matters": false
+  },
+  {
+    "id": "XL-044",
+    "category": "غياب علاقة",
+    "question": "ما المنتجات التي لم تُبَع أبدًا؟",
+    "gold_sql": "SELECT product_name FROM products WHERE product_id NOT IN (SELECT product_id FROM sales);",
+    "order_matters": false
+  },
+  {
+    "id": "XL-045",
+    "category": "غياب علاقة",
+    "question": "أي موظفي المبيعات لم يُجروا أي عملية بيع؟",
+    "gold_sql": "SELECT full_name FROM employees WHERE department_id = 2 AND employee_id NOT IN (SELECT employee_id FROM sales);",
+    "order_matters": false
+  },
+  {
+    "id": "XL-046",
+    "category": "غياب علاقة",
+    "question": "ما المدن التي ليس فيها أي موظف في قسم التسويق؟",
+    "gold_sql": "SELECT DISTINCT city FROM employees WHERE city NOT IN (SELECT e.city FROM employees e JOIN departments d ON e.department_id = d.department_id WHERE d.department_name = 'Marketing') ORDER BY city;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-047",
+    "category": "غياب علاقة",
+    "question": "ما المنتجات التي لم تُبَع في المنطقة الغربية؟",
+    "gold_sql": "SELECT p.product_name FROM products p WHERE p.product_id NOT IN (SELECT s.product_id FROM sales s WHERE s.region = 'Western') ORDER BY p.product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-048",
+    "category": "أعلى N",
+    "question": "من هو الموظف صاحب أعلى راتب وكم راتبه؟",
+    "gold_sql": "SELECT full_name, salary FROM employees ORDER BY salary DESC, full_name LIMIT 1;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-049",
+    "category": "أعلى N",
+    "question": "من هم أعلى 5 موظفين راتبًا؟",
+    "gold_sql": "SELECT full_name, salary FROM employees ORDER BY salary DESC, full_name LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-050",
+    "category": "أعلى N",
+    "question": "ما أكثر 3 منتجات من حيث الكمية المباعة؟",
+    "gold_sql": "SELECT p.product_name, SUM(s.quantity) AS units FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY p.product_name ORDER BY units DESC, p.product_name LIMIT 3;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-051",
+    "category": "أعلى N",
+    "question": "أي بائع حقق أعلى إيرادات؟",
+    "gold_sql": "SELECT e.full_name, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id JOIN employees e ON s.employee_id = e.employee_id GROUP BY e.full_name ORDER BY revenue DESC, e.full_name LIMIT 1;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-052",
+    "category": "أعلى N",
+    "question": "ما أعلى 5 منتجات من حيث الإيرادات؟",
+    "gold_sql": "SELECT p.product_name, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id GROUP BY p.product_name ORDER BY revenue DESC, p.product_name LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-053",
+    "category": "تاريخ",
+    "question": "ما الإيرادات الشهرية في عام 2026؟",
+    "gold_sql": "SELECT strftime('%Y-%m', s.sale_date) AS month, ROUND(SUM(s.quantity * p.unit_price), 2) AS revenue FROM sales s JOIN products p ON s.product_id = p.product_id WHERE s.sale_date >= '2026-01-01' AND s.sale_date < '2027-01-01' GROUP BY month ORDER BY month;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-054",
+    "category": "تاريخ",
+    "question": "كم عملية بيع تمت في الربع الثاني من 2026 (أبريل إلى يونيو)؟",
+    "gold_sql": "SELECT COUNT(*) FROM sales WHERE sale_date >= '2026-04-01' AND sale_date < '2026-07-01';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-055",
+    "category": "تاريخ",
+    "question": "من هو الموظف الأقدم في الشركة حسب تاريخ التعيين؟",
+    "gold_sql": "SELECT full_name, hire_date FROM employees ORDER BY hire_date, full_name LIMIT 1;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-056",
+    "category": "تاريخ",
+    "question": "كم موظفًا تم تعيينهم في عام 2023؟",
+    "gold_sql": "SELECT COUNT(*) FROM employees WHERE strftime('%Y', hire_date) = '2023';",
+    "order_matters": false
+  },
+  {
+    "id": "XL-057",
+    "category": "تاريخ",
+    "question": "ما عدد عمليات البيع الشهرية في عام 2026؟",
+    "gold_sql": "SELECT strftime('%Y-%m', sale_date) AS month, COUNT(*) AS n FROM sales WHERE sale_date >= '2026-01-01' AND sale_date < '2027-01-01' GROUP BY month ORDER BY month;",
+    "order_matters": true
+  },
+  {
+    "id": "XL-058",
+    "category": "استعلام فرعي",
+    "question": "أي الموظفين يزيد راتبهم عن متوسط راتب قسمهم؟",
+    "gold_sql": "SELECT e.full_name, e.salary FROM employees e WHERE e.salary > (SELECT AVG(salary) FROM employees WHERE department_id = e.department_id) ORDER BY e.full_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-059",
+    "category": "استعلام فرعي",
+    "question": "ما المنتجات التي يزيد سعرها عن متوسط سعر المنتجات؟",
+    "gold_sql": "SELECT product_name, unit_price FROM products WHERE unit_price > (SELECT AVG(unit_price) FROM products) ORDER BY unit_price DESC, product_name;",
+    "order_matters": false
+  },
+  {
+    "id": "XL-060",
+    "category": "نسبة مئوية",
+    "question": "ما نسبة إيرادات فئة الإلكترونيات من إجمالي الإيرادات؟",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(CASE WHEN p.category = 'Electronics' THEN s.quantity * p.unit_price ELSE 0 END) / SUM(s.quantity * p.unit_price), 2) FROM sales s JOIN products p ON s.product_id = p.product_id;",
+    "order_matters": false
+  }
+]

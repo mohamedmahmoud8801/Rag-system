@@ -90,6 +90,7 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     except Exception as e:
         logger.error(f"Error in index_project: {e}")
         return JSONResponse(status_code=500, content={"signal": "error", "message": str(e)})
+@nlp_router.get("/index/info/{project_id}") 
 async def get_project_index_info(request: Request, project_id: int):
     
     project_model = await ProjectModel.create_instance(

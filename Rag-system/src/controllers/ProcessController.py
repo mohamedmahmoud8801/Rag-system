@@ -6,6 +6,7 @@ import io
 import base64
 import logging
 import re
+import unicodedata
 
 from pathlib import Path
 from typing import List
@@ -1777,6 +1778,9 @@ Return only the extracted and structured document content.
 
         if not file_content:
             return None
+        for doc in file_content:
+            if doc.page_content:
+                doc.page_content = unicodedata.normalize('NFKC', doc.page_content)
 
         file_ext = (
             self.get_file_extension(

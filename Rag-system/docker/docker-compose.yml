@@ -1,0 +1,208 @@
+services:
+
+  # ============================================================
+  # Backend
+  # ============================================================
+  fastapi:
+    build:
+      context: ..
+      dockerfile: docker/rag/Dockerfile
+    container_name: fastapi
+    ports:
+      - "8000:8000"
+    volumes:
+      - fastapi_data:/app/assets
+    networks:
+      - backend
+    restart: always
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    env_file:
+      - ./env/.env.app
+    environment:
+      POSTGRES_HOST: pgvector
+      POSTGRES_PORT: 5432
+      OPENAI_API_URL: http://ollama:11434/v1/
+      OLLAMA_API_URL: http://ollama:11434/v1/
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ============================================================
+  # Frontend (React + nginx) — service منفصل
+  # ============================================================
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+    container_name: frontend
+    ports:
+      - "80:80"
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: always
+
+  # ============================================================
+  # Ollama
+  # ============================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - backend
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ollama pull qwen2.5:7b-instruct &&
+       ollama pull qwen2.5vl:3b &&
+       echo 'Models ready.'"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    networks:
+      - backend
+    restart: "no"
+
+  # ============================================================
+  # pgvector
+  # ============================================================
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: pgvector
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - ./env/.env.postgres
+    restart: always
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
+  # Qdrant (alternative vector DB)
+  # ============================================================
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - backend
+    restart: always
+
+  # ============================================================
+  # Monitoring
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - backend
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    env_file:
+      - ./env/.env.grafana
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - backend
+    restart: always
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: postgres-exporter
+    ports:
+      - "9187:9187"
+    env_file:
+      - ./env/.env.postgres-exporter
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: always
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  fastapi_data:
+  ollama_data:
+  pgdata:
+  qdrant_data:
+  prometheus_data:
+  grafana_data:

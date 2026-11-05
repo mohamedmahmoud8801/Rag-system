@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileSpreadsheet, Play, Plus, Server, Sparkles, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileSpreadsheet, Play, Plus, Server, Sparkles, Trash2 } from "lucide-react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
 import { Alert, Badge, Button, Card, Input, Segmented, Spinner } from "@/components/ui";
 import { useProject } from "@/hooks/project";

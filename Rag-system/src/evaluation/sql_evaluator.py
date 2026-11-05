@@ -580,7 +580,10 @@ def run_ragas_sql_metrics(results, wanted, schema, max_rows=100):
         from ragas.metrics import LLMSQLEquivalence
 
         import httpx
-        from openai import OpenAI
+        from dotenv import load_dotenv
+load_dotenv()
+
+from openai import OpenAI
 
         client = OpenAI(
             base_url=os.getenv("RAGAS_JUDGE_URL", "http://localhost:11434/v1"),

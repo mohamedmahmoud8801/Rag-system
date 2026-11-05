@@ -1,7 +1,8 @@
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import Depends, FastAPI
-from routes import base, data, nlp, sql,video,knowledge,router,databases
+from routes import base, data, nlp, sql, video, knowledge, router, databases
 
-from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
 from auth.config import get_auth_settings
 from auth.dependencies import get_current_user
@@ -14,60 +15,60 @@ from stores.reranker.RerankerProviderFactory import RerankerProviderFactory
 from stores.sql.templates import SQLTemplateParser
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from utils.metrics import setup_metrics
+
 
 app = FastAPI()
 
+setup_metrics(app)
+
+
 async def startup_span():
     settings = get_settings()
-    # app.mongo_conn = AsyncIOMotorClient(settings.MONGODB_URL)
     postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USERNAME}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_MAIN_DATABASE}"
     app.db_engine = create_async_engine(postgres_conn)
-    app.db_client = sessionmaker(app.db_engine,class_=AsyncSession,expire_on_commit=False)
-    # app.db_client = app.mongo_conn[settings.MONGODB_DATABASE]
+    app.db_client = sessionmaker(app.db_engine, class_=AsyncSession, expire_on_commit=False)
+
     llm_provider_factory = LLMProviderFactory(settings)
-    vectordb_provider_factory = VectorDBProviderFactory(config=settings,db_client=app.db_client)
-    #generation client
+    vectordb_provider_factory = VectorDBProviderFactory(config=settings, db_client=app.db_client)
+
     app.generation_client = llm_provider_factory.create(provider=settings.GENERATION_BACKEND)
-    app.generation_client.set_generation_model(model_id = settings.GENERATION_MODEL_ID)
-    #embedding_client
+    app.generation_client.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
+
     app.embedding_client = llm_provider_factory.create(provider=settings.EMBEDDING_BACKEND)
-    app.embedding_client.set_embedding_model(model_id=settings.EMBEDDING_MODEL_ID,
-                                            embedding_size=settings.EMBEDDING_MODEL_SIZE )
+    app.embedding_client.set_embedding_model(
+        model_id=settings.EMBEDDING_MODEL_ID,
+        embedding_size=settings.EMBEDDING_MODEL_SIZE,
+    )
 
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
     await app.vectordb_client.connect()
-    # Reranker
+
     app.reranker_client = RerankerProviderFactory.create(
         provider=settings.RERANKER_PROVIDER,
-        model_id=settings.RERANKER_MODEL_ID
+        model_id=settings.RERANKER_MODEL_ID,
     )
 
-    app.template_parser = TemplateParser(language=settings.PRIMARY_LANG,default_language=settings.DEFAULT_LANG)
+    app.template_parser = TemplateParser(language=settings.PRIMARY_LANG, default_language=settings.DEFAULT_LANG)
     app.sql_template_parser = SQLTemplateParser(
-    language=settings.PRIMARY_LANG,
-    default_language=settings.DEFAULT_LANG
-)
+        language=settings.PRIMARY_LANG,
+        default_language=settings.DEFAULT_LANG,
+    )
 
 
-async def shutdown_span():  
-    # app.mongo_conn.close()
+async def shutdown_span():
     await app.db_engine.dispose()
     await app.vectordb_client.disconnect()
 
 
-
-# app.route.lifespan.on_startup.append(startup_span)
-# app.route.lifespan.on_shutdown.append(shutdown_span)
-
 app.on_event("startup")(startup_span)
 app.on_event("shutdown")(shutdown_span)
 
-# ---- authentication / authorization ----
-# AUTH_ENABLED=false in .env opens every route again (development only).
+
 _protected = [Depends(get_current_user)] if get_auth_settings().AUTH_ENABLED else []
 
-app.include_router(base.base_router)                       # public
-app.include_router(auth_router)                            # public: register, login, codes, reset
+app.include_router(base.base_router)
+app.include_router(auth_router)
 app.include_router(data.data_router, dependencies=_protected)
 app.include_router(nlp.nlp_router, dependencies=_protected)
 app.include_router(sql.sql_router, dependencies=_protected)

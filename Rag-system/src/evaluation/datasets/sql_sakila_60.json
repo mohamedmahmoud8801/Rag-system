@@ -1,0 +1,422 @@
+[
+  {
+    "id": "SK-001",
+    "category": "بسيط",
+    "question": "كم عدد الأفلام في قاعدة البيانات؟",
+    "gold_sql": "SELECT COUNT(*) FROM film;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-002",
+    "category": "بسيط",
+    "question": "كم عدد الممثلين؟",
+    "gold_sql": "SELECT COUNT(*) FROM actor;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-003",
+    "category": "بسيط",
+    "question": "كم عدد العملاء؟",
+    "gold_sql": "SELECT COUNT(*) FROM customer;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-004",
+    "category": "بسيط",
+    "question": "كم عدد العملاء النشطين؟",
+    "gold_sql": "SELECT COUNT(*) FROM customer WHERE active = 1;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-005",
+    "category": "تجميع",
+    "question": "ما أقصى مدة فيلم بالدقائق في قاعدة البيانات؟",
+    "gold_sql": "SELECT MAX(length) FROM film;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-006",
+    "category": "تجميع",
+    "question": "ما متوسط سعر استئجار الأفلام؟",
+    "gold_sql": "SELECT ROUND(AVG(rental_rate), 2) FROM film;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-007",
+    "category": "فلترة متعددة الشروط",
+    "question": "اعرض عناوين الأفلام التي تصنيفها PG-13 ومدتها أكثر من 180 دقيقة.",
+    "gold_sql": "SELECT title, length FROM film WHERE rating = 'PG-13' AND length > 180 ORDER BY title;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-008",
+    "category": "تجميع حسب عمود",
+    "question": "كم عدد الأفلام في كل تصنيف عمري؟",
+    "gold_sql": "SELECT rating, COUNT(*) AS n FROM film GROUP BY rating ORDER BY n DESC, rating;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-009",
+    "category": "مطابقة نصية",
+    "question": "اعرض العملاء الذين يبدأ اسمهم الأول بحرف A.",
+    "gold_sql": "SELECT first_name, last_name FROM customer WHERE first_name LIKE 'A%' ORDER BY first_name, last_name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-010",
+    "category": "ربط وتجميع",
+    "question": "كم عدد الأفلام في كل فئة؟",
+    "gold_sql": "SELECT c.name, COUNT(*) AS n FROM film_category fc JOIN category c ON fc.category_id = c.category_id GROUP BY c.name ORDER BY n DESC, c.name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-011",
+    "category": "أعلى N",
+    "question": "من هم أكثر 5 ممثلين ظهورًا في الأفلام؟",
+    "gold_sql": "SELECT a.first_name, a.last_name, COUNT(*) AS films FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id GROUP BY a.actor_id, a.first_name, a.last_name ORDER BY films DESC, a.last_name, a.first_name LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-012",
+    "category": "ربط ثلاثة جداول",
+    "question": "ما أسماء الممثلين في فيلم ACADEMY DINOSAUR؟",
+    "gold_sql": "SELECT a.first_name, a.last_name FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN film f ON fa.film_id = f.film_id WHERE f.title = 'ACADEMY DINOSAUR' ORDER BY a.last_name, a.first_name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-013",
+    "category": "تجميع حسب عمود",
+    "question": "كم عدد نسخ الأفلام في المخزون لكل متجر؟",
+    "gold_sql": "SELECT store_id, COUNT(*) AS copies FROM inventory GROUP BY store_id ORDER BY store_id;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-014",
+    "category": "تجميع",
+    "question": "ما إجمالي مبالغ المدفوعات؟",
+    "gold_sql": "SELECT ROUND(SUM(amount), 2) FROM payment;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-015",
+    "category": "ربط وتجميع",
+    "question": "ما إجمالي الإيرادات لكل متجر؟",
+    "gold_sql": "SELECT i.store_id, ROUND(SUM(p.amount), 2) AS revenue FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id GROUP BY i.store_id ORDER BY i.store_id;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-016",
+    "category": "أعلى N",
+    "question": "من هم أكثر 10 عملاء إنفاقًا؟",
+    "gold_sql": "SELECT c.customer_id, c.first_name, c.last_name, ROUND(SUM(p.amount), 2) AS total FROM customer c JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY total DESC, c.customer_id LIMIT 10;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-017",
+    "category": "غياب علاقة",
+    "question": "ما العملاء الذين لم يستأجروا أي فيلم؟",
+    "gold_sql": "SELECT c.customer_id, c.first_name, c.last_name FROM customer c WHERE NOT EXISTS (SELECT 1 FROM rental r WHERE r.customer_id = c.customer_id) ORDER BY c.customer_id;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-018",
+    "category": "غياب علاقة",
+    "question": "كم فيلمًا لا توجد له أي نسخة في المخزون؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE film_id NOT IN (SELECT film_id FROM inventory);",
+    "order_matters": false
+  },
+  {
+    "id": "SK-019",
+    "category": "فلترة",
+    "question": "كم مرة استأجر العميل رقم 1 أفلامًا؟",
+    "gold_sql": "SELECT COUNT(*) FROM rental WHERE customer_id = 1;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-020",
+    "category": "ربط 4 جداول و HAVING",
+    "question": "ما الدول التي يزيد عدد عملائها عن 30 عميلًا؟",
+    "gold_sql": "SELECT co.country, COUNT(*) AS n FROM customer cu JOIN address a ON cu.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN country co ON ci.country_id = co.country_id GROUP BY co.country HAVING COUNT(*) > 30 ORDER BY n DESC, co.country;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-021",
+    "category": "أعلى N",
+    "question": "ما أكثر 5 دول من حيث عدد العملاء؟",
+    "gold_sql": "SELECT co.country, COUNT(*) AS n FROM customer cu JOIN address a ON cu.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN country co ON ci.country_id = co.country_id GROUP BY co.country ORDER BY n DESC, co.country LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-022",
+    "category": "تاريخ",
+    "question": "كم عملية استئجار تمت خلال أغسطس 2005؟",
+    "gold_sql": "SELECT COUNT(*) FROM rental WHERE rental_date >= '2005-08-01' AND rental_date < '2005-09-01';",
+    "order_matters": false
+  },
+  {
+    "id": "SK-023",
+    "category": "تاريخ وتجميع",
+    "question": "ما الإيرادات الشهرية من المدفوعات؟",
+    "gold_sql": "SELECT strftime('%Y-%m', payment_date) AS month, ROUND(SUM(amount), 2) AS revenue FROM payment GROUP BY month ORDER BY month;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-024",
+    "category": "أعلى N",
+    "question": "ما الفيلم الأكثر استئجارًا؟",
+    "gold_sql": "SELECT f.title, COUNT(*) AS n FROM rental r JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film f ON i.film_id = f.film_id GROUP BY f.film_id, f.title ORDER BY n DESC, f.title LIMIT 1;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-025",
+    "category": "استعلام فرعي",
+    "question": "كم فيلمًا سعر استئجاره أعلى من متوسط سعر الاستئجار؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE rental_rate > (SELECT AVG(rental_rate) FROM film);",
+    "order_matters": false
+  },
+  {
+    "id": "SK-026",
+    "category": "ربط وتجميع",
+    "question": "ما متوسط مدة الأفلام في كل فئة؟",
+    "gold_sql": "SELECT c.name, ROUND(AVG(f.length), 2) AS avg_length FROM film f JOIN film_category fc ON f.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id GROUP BY c.name ORDER BY avg_length DESC, c.name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-027",
+    "category": "نسبة مئوية",
+    "question": "ما نسبة الأفلام ذات التصنيف G من إجمالي الأفلام؟",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(CASE WHEN rating = 'G' THEN 1 ELSE 0 END) / COUNT(*), 2) FROM film;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-028",
+    "category": "HAVING",
+    "question": "من هم العملاء الذين استأجروا أكثر من 40 فيلمًا؟",
+    "gold_sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(*) AS n FROM customer c JOIN rental r ON c.customer_id = r.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING COUNT(*) > 40 ORDER BY n DESC, c.customer_id;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-029",
+    "category": "أعلى N",
+    "question": "أي موظف نفّذ أكبر عدد من عمليات الاستئجار؟",
+    "gold_sql": "SELECT s.first_name, s.last_name, COUNT(*) AS n FROM rental r JOIN staff s ON r.staff_id = s.staff_id GROUP BY s.staff_id, s.first_name, s.last_name ORDER BY n DESC, s.staff_id LIMIT 1;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-030",
+    "category": "ربط وتجميع",
+    "question": "كم فيلمًا لكل لغة؟",
+    "gold_sql": "SELECT l.name, COUNT(*) AS n FROM film f JOIN language l ON f.language_id = l.language_id GROUP BY l.name ORDER BY n DESC, l.name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-031",
+    "category": "دالة نافذة",
+    "question": "ما أطول فيلم في كل فئة؟",
+    "gold_sql": "SELECT name, title, length FROM (SELECT c.name, f.title, f.length, RANK() OVER (PARTITION BY c.category_id ORDER BY f.length DESC) AS rnk FROM film f JOIN film_category fc ON f.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id) t WHERE rnk = 1 ORDER BY name, title;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-032",
+    "category": "بسيط",
+    "question": "كم عدد المتاجر؟",
+    "gold_sql": "SELECT COUNT(*) FROM store;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-033",
+    "category": "بسيط",
+    "question": "كم عدد اللغات المسجلة؟",
+    "gold_sql": "SELECT COUNT(*) FROM language;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-034",
+    "category": "تجميع",
+    "question": "ما إجمالي عدد النسخ في المخزون؟",
+    "gold_sql": "SELECT COUNT(*) FROM inventory;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-035",
+    "category": "تجميع",
+    "question": "ما متوسط مدة الأفلام بالدقائق؟",
+    "gold_sql": "SELECT ROUND(AVG(length), 2) FROM film;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-036",
+    "category": "فلترة",
+    "question": "كم عدد الأفلام التي مدتها أكثر من 120 دقيقة؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE length > 120;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-037",
+    "category": "فلترة",
+    "question": "كم عدد الأفلام التي سعر استئجارها 0.99؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE rental_rate = 0.99;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-038",
+    "category": "تجميع حسب عمود",
+    "question": "كم عدد الأفلام لكل سعر استئجار؟",
+    "gold_sql": "SELECT rental_rate, COUNT(*) AS n FROM film GROUP BY rental_rate ORDER BY rental_rate;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-039",
+    "category": "مطابقة نصية",
+    "question": "كم عدد الأفلام التي يحتوي عنوانها على كلمة LOVE؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE UPPER(title) LIKE '%LOVE%';",
+    "order_matters": false
+  },
+  {
+    "id": "SK-040",
+    "category": "ربط وتجميع",
+    "question": "ما أكثر 10 ممثلين ظهورًا في الأفلام؟",
+    "gold_sql": "SELECT a.first_name, a.last_name, COUNT(*) AS n FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id GROUP BY a.actor_id, a.first_name, a.last_name ORDER BY n DESC, a.last_name, a.first_name LIMIT 10;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-041",
+    "category": "تجميع",
+    "question": "ما متوسط مبلغ الدفعة الواحدة؟",
+    "gold_sql": "SELECT ROUND(AVG(amount), 2) FROM payment;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-042",
+    "category": "تجميع",
+    "question": "ما أعلى وأقل مبلغ دفعة واحدة؟",
+    "gold_sql": "SELECT MAX(amount) AS max_amount, MIN(amount) AS min_amount FROM payment;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-043",
+    "category": "فلترة",
+    "question": "كم دفعة تمت في أغسطس 2005؟",
+    "gold_sql": "SELECT COUNT(*) FROM payment WHERE payment_date >= '2005-08-01' AND payment_date < '2005-09-01';",
+    "order_matters": false
+  },
+  {
+    "id": "SK-044",
+    "category": "تجميع حسب عمود",
+    "question": "من هم أكثر 5 عملاء من حيث عدد الدفعات؟",
+    "gold_sql": "SELECT customer_id, COUNT(*) AS n FROM payment GROUP BY customer_id ORDER BY n DESC, customer_id LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-045",
+    "category": "ربط",
+    "question": "ما أسماء العملاء الذين لديهم أكثر من 30 دفعة؟",
+    "gold_sql": "SELECT c.first_name, c.last_name, COUNT(*) AS n FROM customer c JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING COUNT(*) > 30 ORDER BY n DESC, c.last_name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-046",
+    "category": "فلترة",
+    "question": "كم عملية استئجار تمت في يوليو 2005؟",
+    "gold_sql": "SELECT COUNT(*) FROM rental WHERE rental_date >= '2005-07-01' AND rental_date < '2005-08-01';",
+    "order_matters": false
+  },
+  {
+    "id": "SK-047",
+    "category": "ربط",
+    "question": "ما عناوين الأفلام التي استأجرها العميل رقم 1؟",
+    "gold_sql": "SELECT DISTINCT f.title FROM film f JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id WHERE r.customer_id = 1 ORDER BY f.title;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-048",
+    "category": "تجميع حسب عمود",
+    "question": "ما عدد الأفلام لكل تصنيف عمري مرتبة تنازليًا؟",
+    "gold_sql": "SELECT rating, COUNT(*) AS n FROM film GROUP BY rating ORDER BY n DESC;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-049",
+    "category": "فلترة",
+    "question": "ما أكثر 5 مدن من حيث عدد العملاء؟",
+    "gold_sql": "SELECT ci.city, COUNT(*) AS n FROM customer cu JOIN address a ON cu.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id GROUP BY ci.city ORDER BY n DESC, ci.city LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-050",
+    "category": "ربط وتجميع",
+    "question": "ما إجمالي الإيرادات لكل فئة أفلام؟",
+    "gold_sql": "SELECT c.name, ROUND(SUM(p.amount), 2) AS revenue FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id GROUP BY c.name ORDER BY revenue DESC, c.name;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-051",
+    "category": "تجميع",
+    "question": "ما متوسط عدد الأفلام لكل ممثل؟",
+    "gold_sql": "SELECT ROUND(AVG(n), 2) FROM (SELECT COUNT(*) AS n FROM film_actor GROUP BY actor_id);",
+    "order_matters": false
+  },
+  {
+    "id": "SK-052",
+    "category": "ربط",
+    "question": "ما أكثر 10 دول من حيث عدد العملاء؟",
+    "gold_sql": "SELECT co.country, COUNT(*) AS n FROM customer cu JOIN address a ON cu.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN country co ON ci.country_id = co.country_id GROUP BY co.country ORDER BY n DESC, co.country LIMIT 10;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-053",
+    "category": "تجميع",
+    "question": "كم عدد الأفلام التي لم تُستأجر أبدًا؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE film_id NOT IN (SELECT i.film_id FROM inventory i JOIN rental r ON i.inventory_id = r.inventory_id);",
+    "order_matters": false
+  },
+  {
+    "id": "SK-054",
+    "category": "دالة نافذة",
+    "question": "ما ترتيب العملاء حسب إجمالي الإنفاق (أعلى 10)؟",
+    "gold_sql": "SELECT RANK() OVER (ORDER BY total DESC) AS rnk, customer_id, total FROM (SELECT customer_id, ROUND(SUM(amount), 2) AS total FROM payment GROUP BY customer_id) ORDER BY rnk LIMIT 10;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-055",
+    "category": "تجميع حسب عمود",
+    "question": "ما أكثر 5 لغات من حيث عدد الأفلام؟",
+    "gold_sql": "SELECT l.name, COUNT(*) AS n FROM film f JOIN language l ON f.language_id = l.language_id GROUP BY l.name ORDER BY n DESC, l.name LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-056",
+    "category": "ربط",
+    "question": "ما أكثر 5 أفلام من حيث عدد الممثلين؟",
+    "gold_sql": "SELECT f.title, COUNT(*) AS n FROM film f JOIN film_actor fa ON f.film_id = fa.film_id GROUP BY f.film_id, f.title ORDER BY n DESC, f.title LIMIT 5;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-057",
+    "category": "تجميع",
+    "question": "كم عدد الأفلام التي مدتها بين 90 و120 دقيقة؟",
+    "gold_sql": "SELECT COUNT(*) FROM film WHERE length BETWEEN 90 AND 120;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-058",
+    "category": "ربط",
+    "question": "ما أكثر 10 عملاء من حيث عدد عمليات الاستئجار؟",
+    "gold_sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(*) AS n FROM customer c JOIN rental r ON c.customer_id = r.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY n DESC, c.customer_id LIMIT 10;",
+    "order_matters": true
+  },
+  {
+    "id": "SK-059",
+    "category": "ربط وتجميع",
+    "question": "كم عدد الدفعات لكل متجر؟",
+    "gold_sql": "SELECT s.store_id, COUNT(*) AS n FROM payment p JOIN staff s ON p.staff_id = s.staff_id GROUP BY s.store_id ORDER BY s.store_id;",
+    "order_matters": false
+  },
+  {
+    "id": "SK-060",
+    "category": "ربط وتجميع",
+    "question": "ما متوسط مبلغ الدفعة لكل فئة أفلام؟",
+    "gold_sql": "SELECT c.name, ROUND(AVG(p.amount), 2) AS avg_payment FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id GROUP BY c.name ORDER BY avg_payment DESC;",
+    "order_matters": false
+  }
+]

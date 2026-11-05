@@ -26,6 +26,11 @@ system_prompt = Template("\n".join([
     "(a column with the same name, or an id / foreign-key column), even if the schema lists no "
     "foreign keys. Every JOIN must have an ON condition.",
 
+    "Every column you reference must belong to a table in FROM or JOIN. If a needed column "
+    "(for a calculation, filter, or output) is in another table, JOIN that table along the "
+    "listed relationships. If a measure is not a column, compute it from the numeric columns "
+    "of the related tables.",
+
     "For top / highest / lowest / latest N questions use ORDER BY with LIMIT.",
     "For partial or case-insensitive text matching use LOWER(column) LIKE '%value%'.",
 

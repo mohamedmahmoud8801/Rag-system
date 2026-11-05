@@ -1,0 +1,136 @@
+"""
+Generic schema hints for the SQL generator. No file-specific knowledge:
+everything is read from the database itself at run time.
+
+  dialect_notes(dialect)            -> text telling the model which SQL dialect to write
+  add_schema_hints(model, schema)   -> adds per-column stats and inferred relationships
+"""
+
+import logging
+from typing import Any, Dict, List
+
+logger = logging.getLogger("uvicorn.error")
+
+_DIALECT_NOTES = {
+    "sqlite": [
+        "SQL dialect: SQLite.",
+        "No ILIKE, EXTRACT, DATE_TRUNC, DATEDIFF, NOW(), MEDIAN, or FULL OUTER JOIN.",
+        "DATE and TIMESTAMP columns are stored as ISO text ('YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS'): "
+        "compare them as text and use strftime('%Y', col), strftime('%m', col), strftime('%Y-%m', col) "
+        "for year / month grouping.",
+        "Use ROUND(x, 2) for decimals; window functions (ROW_NUMBER, RANK, SUM OVER) are supported.",
+    ],
+    "postgresql": [
+        "SQL dialect: PostgreSQL.",
+        "Use EXTRACT(YEAR FROM col) or DATE_TRUNC('month', col) for date parts; ILIKE is allowed.",
+    ],
+}
+
+
+def dialect_notes(dialect: str) -> str:
+    lines = _DIALECT_NOTES.get((dialect or "").lower())
+    if not lines:
+        lines = [f"SQL dialect: {dialect or 'unknown'}. Use standard SQL."]
+    return "## SQL Dialect\n" + "\n".join(lines)
+
+
+def _q(identifier: str) -> str:
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _type(column: Dict[str, Any]) -> str:
+    return str(column.get("type", "")).upper()
+
+
+async def _scalar_row(model, query: str) -> Dict[str, Any]:
+    result = await model.execute(query=query)
+    rows = result.get("rows", [])
+    return rows[0] if rows else {}
+
+
+async def add_schema_hints(
+    model,
+    schema: Dict[str, Any],
+    max_listed_values: int = 20,
+) -> Dict[str, Any]:
+    """
+    For every column adds column["stats"]:
+      - numeric          -> "range: min to max"
+      - date / timestamp -> "range: min to max"
+      - text             -> "all N values listed" is handled by the existing samples;
+                            here we only add the distinct count so the model knows
+                            whether the sample list is complete or just examples.
+    For every table adds table_info["inferred_relationships"] (list of text lines):
+      a column with the same name in another table where that column is unique
+      (a key) is treated as a relationship child -> parent.
+    Never raises: a failure only means fewer hints.
+    """
+
+    # ---------- column stats ----------
+    for table_name, table_info in schema.items():
+        for column in table_info.get("columns", []):
+            name = column["name"]
+            ctype = _type(column)
+            tq, cq = _q(table_name), _q(name)
+            try:
+                if any(t in ctype for t in ("INT", "FLOAT", "REAL", "NUMERIC", "DECIMAL", "DOUBLE", "DATE", "TIME")):
+                    row = await _scalar_row(
+                        model,
+                        f"SELECT MIN({cq}) AS lo, MAX({cq}) AS hi FROM {tq}",
+                    )
+                    lo, hi = row.get("lo"), row.get("hi")
+                    if lo is not None and hi is not None:
+                        column["stats"] = f"range: {lo} to {hi}"
+                elif any(t in ctype for t in ("TEXT", "VARCHAR", "CHAR", "STRING")):
+                    row = await _scalar_row(
+                        model,
+                        f"SELECT COUNT(DISTINCT {cq}) AS n FROM {tq}",
+                    )
+                    n = row.get("n")
+                    if n is not None:
+                        samples = column.get("sample_values") or []
+                        if samples and int(n) <= max_listed_values and len(samples) >= int(n):
+                            column["stats"] = f"{n} distinct values (all listed)"
+                        else:
+                            column["stats"] = f"{n} distinct values (the examples are only a sample)"
+                            if int(n) > max_listed_values:
+                                column["sample_values"] = samples[:3]  # a long partial list would mislead
+            except Exception as exc:
+                logger.warning("[SQL DEBUG] COLUMN STATS FAILED | %s.%s | %s", table_name, name, exc)
+
+    # ---------- inferred relationships (only when the schema declares none) ----------
+    try:
+        unique_cache: Dict[tuple, bool] = {}
+
+        async def is_unique(table: str, col: str) -> bool:
+            key = (table, col)
+            if key not in unique_cache:
+                row = await _scalar_row(
+                    model,
+                    f"SELECT COUNT(*) AS total, COUNT(DISTINCT {_q(col)}) AS d, "
+                    f"COUNT({_q(col)}) AS nn FROM {_q(table)}",
+                )
+                total, d, nn = row.get("total"), row.get("d"), row.get("nn")
+                unique_cache[key] = bool(total) and total == nn == d
+            return unique_cache[key]
+
+        names = {t: {c["name"].lower(): c["name"] for c in info.get("columns", [])} for t, info in schema.items()}
+
+        for child, info in schema.items():
+            if info.get("foreign_keys"):
+                continue
+            lines: List[str] = []
+            for col_lower, col in names[child].items():
+                for parent in schema:
+                    if parent == child or col_lower not in names[parent]:
+                        continue
+                    parent_col = names[parent][col_lower]
+                    # parent side must be a key, child side must not be the key of its own table
+                    if await is_unique(parent, parent_col) and not await is_unique(child, col):
+                        lines.append(f"{child}.{col} -> {parent}.{parent_col}")
+            if lines:
+                info["inferred_relationships"] = lines
+    except Exception as exc:
+        logger.warning("[SQL DEBUG] RELATIONSHIP INFERENCE FAILED | %s", exc)
+
+    return schema

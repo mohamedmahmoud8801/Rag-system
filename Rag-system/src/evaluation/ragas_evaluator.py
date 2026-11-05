@@ -26,6 +26,9 @@ from pathlib import Path
 
 import httpx
 from datasets import Dataset
+from dotenv import load_dotenv
+load_dotenv()
+
 from openai import OpenAI
 from ragas import evaluate
 from ragas.llms import llm_factory
@@ -56,10 +59,10 @@ RESULTS_DIR = EVAL_DIR / "results"
 JUDGE_MODEL = os.getenv("RAGAS_JUDGE_MODEL", "qwen2.5:7b-instruct")
 JUDGE_URL = os.getenv("RAGAS_JUDGE_URL", "http://localhost:11434/v1")
 
-CALL_TIMEOUT = 3600.0   # per judge HTTP call
-JOB_TIMEOUT = 7200      # per RAGAS job
-RETRIEVAL_LIMIT = 10
-TARGET_PDF = "NIPS-2017-attention-is-all-you-need-Paper.pdf"
+CALL_TIMEOUT = 7200.0   # per judge HTTP call
+JOB_TIMEOUT = 14400      # per RAGAS job
+RETRIEVAL_LIMIT = 30
+TARGET_PDF = ""
 
 METRIC_CLASSES = {
     "faithfulness": Faithfulness,
@@ -71,6 +74,13 @@ METRIC_CLASSES = {
 # ==========================================================================
 # RAG components
 # ==========================================================================
+
+def clean_answer(text):
+    """Remove CJK characters that some models leak."""
+    if not text:
+        return text
+    return re.sub(r'[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+', '', text).strip()
+
 
 async def build_rag_components():
     s = get_settings()
@@ -420,7 +430,7 @@ async def main(args):
                     )
 
                 answer, _, _, contexts, _ = result
-                answer = str(answer).strip() if answer is not None else ""
+                answer = clean_answer(str(answer).strip() if answer is not None else "")
                 contexts = normalize_contexts(contexts)
                 elapsed = time.time() - started
 
@@ -477,6 +487,7 @@ async def main(args):
             provider="openai",
             client=judge_client,
             temperature=0.0,
+            max_tokens=4096,
         )
 
         metrics = [METRIC_CLASSES[m](llm=ragas_llm) for m in wanted_metrics]

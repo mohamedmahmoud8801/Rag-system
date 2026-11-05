@@ -1,7 +1,7 @@
 from ..VLMInterface import VLMInterface
 from ..VLMEnums import VLMEnums
 from helpers.config import Settings
-from openai import OpenAI
+from langfuse.openai import OpenAI
 
 import base64
 import logging

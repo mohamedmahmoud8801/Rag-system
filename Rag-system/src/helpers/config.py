@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     VIDEO_DEFAULT_GENERATION_TEMPERATURE: float = 0.1
 
 
+    LANGFUSE_SECRET_KEY:str
+    LANGFUSE_PUBLIC_KEY:str
+    LANGFUSE_BASE_URL:str
+
 
     model_config = SettingsConfigDict(
     env_file=Path(__file__).resolve().parent.parent / ".env",

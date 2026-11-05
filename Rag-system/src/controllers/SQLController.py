@@ -34,6 +34,9 @@ from stores.llm.LLMEnums import (
 logger = logging.getLogger("uvicorn.error")
 
 
+from stores.sql.SchemaHints import add_schema_hints, dialect_notes, join_hint
+
+
 class SQLController:
 
     # ========================================================
@@ -405,6 +408,11 @@ Return exactly one SELECT statement.
                     ]["columns"].append(
                         enriched_column
                     )
+
+            await add_schema_hints(model, enriched_schema)
+
+            for _table_info in enriched_schema.values():
+                _table_info["dialect"] = provider
 
             return enriched_schema
 
@@ -793,7 +801,7 @@ Return exactly one SELECT statement.
             prompt=full_prompt,
             chat_history=chat_history,
             temperature=0.0,
-            max_output_tokens=256,
+            max_output_tokens=512,
         )
 
         logger.info(
@@ -860,6 +868,8 @@ Return exactly one SELECT statement.
         schema_text = self._format_schema(
             schema
         )
+
+        error = join_hint(error, schema)
 
         correction_prompt = f"""
 ## Database Schema
@@ -1101,9 +1111,12 @@ Use only tables and columns present in the schema.
 
 Do not invent columns.
 
-Do not invent relationships.
+Do not invent columns or tables.
 
-Use JOIN only when supported by the schema.
+Relationships listed in the schema (declared or inferred) are valid: JOIN along them.
+
+If a column you need is not in the tables used so far but exists in another table,
+JOIN that table using the listed relationships. Never repeat the previous SQL unchanged.
 
 Return only SQL.
 
@@ -1143,7 +1156,7 @@ Return only the corrected SQL.
             prompt=correction_prompt,
             chat_history=chat_history,
             temperature=0.0,
-            max_output_tokens=256,
+            max_output_tokens=512,
         )
 
         logger.info(
@@ -2608,6 +2621,13 @@ Rules:
 
         schema_parts: List[str] = []
 
+        _first_table = next(iter(schema.values()), None) or {}
+
+        if _first_table.get("dialect"):
+            schema_parts.append(dialect_notes(_first_table["dialect"]))
+            schema_parts.append("")
+            schema_parts.append("## Tables")
+
         for table_name, table_info in schema.items():
 
             schema_parts.append(
@@ -2662,6 +2682,9 @@ Rules:
                         f" | examples: "
                         f"{formatted_values}"
                     )
+
+                if column.get("stats"):
+                    column_line += f" | {column['stats']}"
 
                 schema_parts.append(
                     column_line
@@ -2745,6 +2768,13 @@ Rules:
                             f"REFERENCES "
                             f"{reference_text}"
                         )
+
+            _relations = table_info.get("inferred_relationships", [])
+
+            if _relations:
+                schema_parts.append("Relationships (inferred from matching key columns):")
+                for _relation in _relations:
+                    schema_parts.append(f"- {_relation}")
 
             schema_parts.append("")
 
